@@ -22,36 +22,18 @@
     return;
   }
 
-  // ── Wait for the session token to be injected by React ──────────────────────
+  // ── No need to wait for user auth token - using simple password auth ──────────────
 
-  function waitForToken(maxMs = 10000) {
-    return new Promise((resolve, reject) => {
-      if (window.__SUPABASE_TOKEN) {
-        resolve(window.__SUPABASE_TOKEN);
-        return;
-      }
-      const start = Date.now();
-      const iv = setInterval(() => {
-        if (window.__SUPABASE_TOKEN) {
-          clearInterval(iv);
-          resolve(window.__SUPABASE_TOKEN);
-          return;
-        }
-        if (Date.now() - start > maxMs) {
-          clearInterval(iv);
-          reject(new Error("Timed out waiting for auth token"));
-        }
-      }, 50);
-    });
+  function getAuthToken() {
+    return Promise.resolve(SUPABASE_KEY);
   }
 
   // ── Minimal fetch-based Supabase client (no SDK needed in public JS) ────────
 
   function headers() {
-    const token = window.__SUPABASE_TOKEN || SUPABASE_KEY;
     return {
       apikey: SUPABASE_KEY,
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
       "Content-Type": "application/json",
       Prefer: "return=representation",
     };
@@ -115,6 +97,7 @@
   // ── Load full state from Supabase ───────────────────────────────────────────
 
   async function loadFromSupabase() {
+    console.log("[bridge] Loading data from Supabase...");
     const [
       houses,
       clSections,
@@ -134,6 +117,17 @@
       query("cost_entries", "select=*"),
       query("drive_excluded_files", "select=*"),
     ]);
+
+    console.log("[bridge] Loaded data:", {
+      houses: houses.length,
+      clSections: clSections.length,
+      clItems: clItems.length,
+      checks: checks.length,
+      costSections: costSections.length,
+      costItems: costItems.length,
+      costEntries: costEntries.length,
+      driveExcl: driveExcl.length,
+    });
 
     // ── Build index-keyed state that app-logic.js expects ──────────────────────
 
@@ -486,9 +480,13 @@
 
   // ── Bootstrap ────────────────────────────────────────────────────────────────
 
-  window.__dbReady = waitForToken()
-    .then(() => loadFromSupabase())
+  window.__dbReady = getAuthToken()
+    .then(() => {
+      console.log("[bridge] Auth token ready, loading from Supabase...");
+      return loadFromSupabase();
+    })
     .then((dbState) => {
+      console.log("[bridge] Database state loaded successfully:", dbState);
       if (dbState) {
         window.__dbState = dbState;
       }
@@ -496,6 +494,7 @@
     })
     .catch((err) => {
       console.error("[bridge] Failed to load from Supabase:", err);
+      console.error("[bridge] Error details:", err.message, err.stack);
       return null;
     });
 })();

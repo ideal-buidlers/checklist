@@ -553,7 +553,27 @@ function statusLabel(status) {
 }
 
 function renderChecklist() {
+  console.log("renderChecklist called, state:", state);
   const table = document.getElementById("checklist-table");
+  if (!table) {
+    console.error("checklist-table element not found!");
+    return;
+  }
+
+  // Show helpful message if database is empty
+  if (state.sections.length === 0) {
+    table.innerHTML = `
+      <div style="padding: 40px; text-align: center; color: #666;">
+        <h2>Database is empty</h2>
+        <p>Your database needs to be seeded with initial data.</p>
+        <p>Run the following command to populate the database:</p>
+        <pre style="background: #f5f5f5; padding: 15px; border-radius: 6px; margin: 20px auto; max-width: 500px;">npx supabase db push</pre>
+        <p style="margin-top: 20px;">Or run the seed migration (002_seed.sql) in your Supabase dashboard.</p>
+      </div>
+    `;
+    return;
+  }
+
   let html = "<thead><tr>";
   html += `<th class="item-header">Item</th>`;
   state.houses.forEach((house, hIdx) => {
@@ -924,9 +944,15 @@ document
 document
   .getElementById("popover-save")
   .addEventListener("click", saveNotePopover);
-document
-  .getElementById("popover-backdrop")
-  .addEventListener("click", closeNotePopover);
+document.getElementById("popover-backdrop").addEventListener("click", (e) => {
+  // Close whichever popover is open
+  if (document.getElementById("note-popover").classList.contains("open")) {
+    closeNotePopover();
+  }
+  if (document.getElementById("house-popover").classList.contains("open")) {
+    closeHousePopover();
+  }
+});
 document.getElementById("popover-textarea").addEventListener("keydown", (e) => {
   if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
     e.preventDefault();
@@ -935,18 +961,105 @@ document.getElementById("popover-textarea").addEventListener("keydown", (e) => {
   if (e.key === "Escape") closeNotePopover();
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") closeNotePopover();
+  if (e.key === "Escape") {
+    if (document.getElementById("note-popover").classList.contains("open")) {
+      closeNotePopover();
+    }
+    if (document.getElementById("house-popover").classList.contains("open")) {
+      closeHousePopover();
+    }
+  }
 });
 
-document.getElementById("add-house-btn").addEventListener("click", async () => {
-  const name = prompt("Enter the new house address / name:");
-  if (!name || !name.trim()) return;
-  state.houses.push(name.trim());
-  if (window.__db) await window.__db.addHouse(name.trim());
+// ========== Add House Modal ==========
+function openHousePopover() {
+  document.getElementById("house-name-input").value = "";
+  document.getElementById("house-slack-input").value = "";
+  document.getElementById("house-popover").classList.add("open");
+  document.getElementById("popover-backdrop").classList.add("open");
+  setTimeout(() => document.getElementById("house-name-input").focus(), 50);
+}
+
+function closeHousePopover() {
+  document.getElementById("house-popover").classList.remove("open");
+  document.getElementById("popover-backdrop").classList.remove("open");
+}
+
+async function saveHousePopover() {
+  const name = document.getElementById("house-name-input").value.trim();
+  const slackChannel = document
+    .getElementById("house-slack-input")
+    .value.trim();
+
+  if (!name) {
+    showBanner("Please enter a house name/address", "error");
+    return;
+  }
+
+  // Add to state
+  const hIdx = state.houses.length;
+  state.houses.push(name);
+
+  if (slackChannel) {
+    state.slackChannels[hIdx] = slackChannel;
+  }
+
+  // Add to database
+  if (window.__db) {
+    try {
+      const newHouse = await window.__db.addHouse(name);
+      console.log("House added to database:", newHouse);
+
+      // Update slack channel if provided
+      if (slackChannel && newHouse) {
+        await window.__db.persistHouseField(hIdx, {
+          slack_channel: slackChannel,
+        });
+      }
+    } catch (err) {
+      console.error("Error adding house to database:", err);
+      showBanner("Failed to add house to database: " + err.message, "error");
+      // Rollback state change
+      state.houses.pop();
+      if (slackChannel) delete state.slackChannels[hIdx];
+      return;
+    }
+  }
+
   saveState();
   renderTabs();
   renderChecklist();
+  closeHousePopover();
+  showBanner(`House "${name}" added successfully!`, "success");
+}
+
+document
+  .getElementById("add-house-btn")
+  .addEventListener("click", openHousePopover);
+document
+  .getElementById("house-popover-cancel")
+  .addEventListener("click", closeHousePopover);
+document
+  .getElementById("house-popover-save")
+  .addEventListener("click", saveHousePopover);
+
+document.getElementById("house-name-input").addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+    e.preventDefault();
+    saveHousePopover();
+  }
+  if (e.key === "Escape") closeHousePopover();
 });
+
+document
+  .getElementById("house-slack-input")
+  .addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      saveHousePopover();
+    }
+    if (e.key === "Escape") closeHousePopover();
+  });
 
 // ========== Slack integration ==========
 function showBanner(text, type = "info") {
@@ -973,6 +1086,7 @@ async function syncFromSlack(opts = { silent: false }) {
     hideBanner();
   }
   setAutoSyncStatus("Syncing from Slack…");
+
   try {
     const housesWithChannels = state.houses
       .map((house, hIdx) => ({
@@ -1016,7 +1130,7 @@ async function syncFromSlack(opts = { silent: false }) {
     const supabaseUrl =
       window.__SUPABASE_URL || "https://yywbjhegbxowhzkrazzj.supabase.co";
     const fnUrl = `${supabaseUrl}/functions/v1/slack-sync`;
-    const token = window.__SUPABASE_TOKEN || window.__SUPABASE_ANON_KEY;
+    const token = window.__SUPABASE_ANON_KEY;
     let fnResult;
     try {
       const res = await fetch(fnUrl, {
@@ -1027,10 +1141,11 @@ async function syncFromSlack(opts = { silent: false }) {
         },
         body: JSON.stringify({ houses: payload }),
       });
-      if (!res.ok)
-        throw new Error(
-          `Edge Function error ${res.status}: ${await res.text()}`,
-        );
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Slack sync error:", res.status, errorText);
+        throw new Error(`Edge Function error ${res.status}: ${errorText}`);
+      }
       fnResult = await res.json();
     } catch (err) {
       throw new Error(`Slack sync failed: ${err.message || err}`);
@@ -1249,7 +1364,7 @@ function renderSummary() {
         const note = state.notes[k] || "";
         const source = state.checkSource[k] || "manual";
         if (checked) doneCount++;
-        if (checked || note) rows.push({ item, status, checked, note });
+        if (note) rows.push({ item, status, checked, note });
       });
       return { section: s.name, rows };
     });
@@ -1275,7 +1390,7 @@ function renderSummary() {
                   ? "O"
                   : "○";
           const badge = "";
-          html += `<li class="item-line ${r.checked ? "done" : ""}">
+          html += `<li class="item-line">
             <span class="item-text">${mark} ${escapeHtml(r.item)}</span>${badge}
             ${r.note ? `<div class="note-display">${escapeHtml(r.note)}</div>` : ""}
           </li>`;
@@ -1419,11 +1534,20 @@ function renderCostsForHouse(hIdx) {
   const lot = state.lotCost[hIdx] || { estimate: 0, paid: 0 };
   const t = computeCostsTotals(hIdx);
 
+  // Flatten all cost items and sort alphabetically
+  const allCostItems = [];
+  state.costSections.forEach((s, sIdx) => {
+    s.items.forEach((item, iIdx) => {
+      allCostItems.push({ item, sIdx, iIdx, name: item });
+    });
+  });
+  allCostItems.sort((a, b) => a.name.localeCompare(b.name));
+
   let html = `<div class="costs-pane-inner">
     <div class="costs-header">
       <div>
         <h2>Costs — ${escapeHtml(house)}</h2>
-        <div class="costs-subtitle">Click any cell to edit. Categories are shared across all houses — edit names inline.</div>
+        <div class="costs-subtitle">Click any cell to edit.</div>
       </div>
       <div class="costs-quickstats">
         <div class="stat">Total Estimate <strong>${formatCurrency(t.grandEst)}</strong></div>
@@ -1434,7 +1558,7 @@ function renderCostsForHouse(hIdx) {
     <table class="costs-table">
       <thead>
         <tr>
-          <th>Category</th>
+          <th>Item</th>
           <th class="amount">Estimate</th>
           <th class="amount">Paid</th>
           <th class="actions-col"></th>
@@ -1442,31 +1566,25 @@ function renderCostsForHouse(hIdx) {
       </thead>
       <tbody>`;
 
-  state.costSections.forEach((s, sIdx) => {
-    html += `<tr class="cost-section-row"><td>${escapeHtml(s.name)}</td><td colspan="3"></td></tr>`;
-    s.items.forEach((item, iIdx) => {
-      const k = `${sIdx}|${iIdx}`;
-      const v = costs[k] || {};
-      const e = Number(v.estimate) || 0;
-      const p = Number(v.paid) || 0;
-      html += `<tr class="cost-row" data-cost-key="${k}">
-        <td>
-          <span class="cost-category-text" contenteditable="true" data-cost-edit="category" data-cs="${sIdx}" data-ci="${iIdx}">${escapeHtml(item)}</span>
-        </td>
-        <td class="cost-cell"><input type="text" inputmode="decimal" class="cost-input ${e ? "has-value" : ""}"
-          data-cost-input="estimate" data-h="${hIdx}" data-key="${k}"
-          value="${e ? formatNumber(e) : ""}" placeholder="—"></td>
-        <td class="cost-cell"><input type="text" inputmode="decimal" class="cost-input ${p ? "has-value" : ""}"
-          data-cost-input="paid" data-h="${hIdx}" data-key="${k}"
-          value="${p ? formatNumber(p) : ""}" placeholder="—"></td>
-        <td class="cost-row-actions">
-          <button data-cost-action="remove" data-cs="${sIdx}" data-ci="${iIdx}" title="Remove this category">×</button>
-        </td>
-      </tr>`;
-    });
-    html += `<tr class="add-cost-row"><td colspan="4">
-      <input type="text" class="cost-add-input" data-cost-action="add" data-cs="${sIdx}" placeholder="+ Add category to ${escapeHtml(s.name)}…">
-    </td></tr>`;
+  allCostItems.forEach(({ item, sIdx, iIdx }) => {
+    const k = `${sIdx}|${iIdx}`;
+    const v = costs[k] || {};
+    const e = Number(v.estimate) || 0;
+    const p = Number(v.paid) || 0;
+    html += `<tr class="cost-row" data-cost-key="${k}">
+      <td>
+        <span class="cost-category-text" contenteditable="true" data-cost-edit="category" data-cs="${sIdx}" data-ci="${iIdx}">${escapeHtml(item)}</span>
+      </td>
+      <td class="cost-cell"><input type="text" inputmode="decimal" class="cost-input ${e ? "has-value" : ""}"
+        data-cost-input="estimate" data-h="${hIdx}" data-key="${k}"
+        value="${e ? formatNumber(e) : ""}" placeholder="—"></td>
+      <td class="cost-cell"><input type="text" inputmode="decimal" class="cost-input ${p ? "has-value" : ""}"
+        data-cost-input="paid" data-h="${hIdx}" data-key="${k}"
+        value="${p ? formatNumber(p) : ""}" placeholder="—"></td>
+      <td class="cost-row-actions">
+        <button data-cost-action="remove" data-cs="${sIdx}" data-ci="${iIdx}" title="Remove this item">×</button>
+      </td>
+    </tr>`;
   });
 
   html += `</tbody>
@@ -1688,8 +1806,48 @@ function waitForDbReady(maxMs = 15000) {
 }
 
 waitForDbReady()
-  .then((ready) => ready || Promise.resolve())
+  .then((ready) => {
+    console.log("Database ready:", ready);
+    return ready || Promise.resolve();
+  })
   .then(() => {
+    console.log("Loading state and rendering...");
+    console.log("window.__dbState:", window.__dbState);
+    state = loadState();
+    console.log("State loaded:", state);
+
+    // If state is empty, try to use database state
+    if (
+      state.houses.length === 0 &&
+      state.sections.length === 0 &&
+      window.__dbState
+    ) {
+      console.log("Using database state as fallback");
+      state = {
+        houses: window.__dbState.houses || [],
+        sections: window.__dbState.sections || [],
+        status: window.__dbState.status || {},
+        notes: window.__dbState.notes || {},
+        checkSource: window.__dbState.checkSource || {},
+        slackEvidence: window.__dbState.slackEvidence || {},
+        slackChannels: window.__dbState.slackChannels || {},
+        driveSearchTokens: window.__dbState.driveSearchTokens || {},
+        driveExcludedFiles: window.__dbState.driveExcludedFiles || {},
+        costSections: window.__dbState.costSections || [],
+        costs: window.__dbState.costs || {},
+        lotCost: window.__dbState.lotCost || {},
+        salesPrice: window.__dbState.salesPrice || {},
+      };
+      console.log("Updated state from database:", state);
+    }
+
+    renderTabs();
+    renderChecklist();
+    setActiveView("checklist");
+  })
+  .catch((err) => {
+    console.error("Error during app initialization:", err);
+    // Fallback: try to render with localStorage state
     state = loadState();
     renderTabs();
     renderChecklist();

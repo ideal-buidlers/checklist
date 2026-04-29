@@ -2,30 +2,18 @@
 
 import { useEffect } from "react";
 import Script from "next/script";
-import { useAuth } from "./AuthProvider";
+import { useAuth } from "./auth";
 import { useRouter } from "next/navigation";
-import { createClient } from "../lib/supabase";
 
 export default function Home() {
-  const { user, loading, signOut } = useAuth();
+  const { isAuthenticated, loading, signOut } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !isAuthenticated) {
       router.push("/login");
     }
-  }, [user, loading, router]);
-
-  useEffect(() => {
-    if (!user) return;
-    createClient()
-      .auth.getSession()
-      .then(({ data: { session } }) => {
-        if (session?.access_token) {
-          window.__SUPABASE_TOKEN = session.access_token;
-        }
-      });
-  }, [user]);
+  }, [isAuthenticated, loading, router]);
 
   if (loading) {
     return (
@@ -42,7 +30,7 @@ export default function Home() {
     );
   }
 
-  if (!user) {
+  if (!isAuthenticated) {
     return null;
   }
 
@@ -132,6 +120,114 @@ export default function Home() {
           </button>
           <button className="btn" id="popover-save">
             Save
+          </button>
+        </div>
+      </div>
+      <div
+        className="popover"
+        id="house-popover"
+        style={{ width: "380px", padding: "16px" }}
+      >
+        <div className="popover-title">New House</div>
+        <div className="popover-subtitle">
+          Add a house to your build portfolio
+        </div>
+        <div style={{ marginTop: "16px" }}>
+          <div style={{ marginBottom: "14px" }}>
+            <label
+              htmlFor="house-name-input"
+              style={{
+                fontSize: "11px",
+                fontWeight: "600",
+                color: "#24292f",
+                display: "block",
+                marginBottom: "6px",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+              }}
+            >
+              House Address *
+            </label>
+            <input
+              id="house-name-input"
+              type="text"
+              placeholder="e.g., 519 E Farnum"
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                border: "1px solid #d0d7de",
+                borderRadius: "6px",
+                fontSize: "14px",
+                fontFamily: "inherit",
+                transition: "border-color 0.15s",
+              }}
+              onFocus={(e) => (e.target.style.borderColor = "#1f6feb")}
+              onBlur={(e) => (e.target.style.borderColor = "#d0d7de")}
+            />
+          </div>
+          <div style={{ marginBottom: "16px" }}>
+            <label
+              htmlFor="house-slack-input"
+              style={{
+                fontSize: "11px",
+                fontWeight: "600",
+                color: "#24292f",
+                display: "block",
+                marginBottom: "6px",
+                textTransform: "uppercase",
+                letterSpacing: "0.5px",
+              }}
+            >
+              Slack Channel
+            </label>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span
+                style={{
+                  color: "#57606a",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                }}
+              >
+                #
+              </span>
+              <input
+                id="house-slack-input"
+                type="text"
+                placeholder="e.g., 519_farnum"
+                style={{
+                  flex: 1,
+                  padding: "10px 12px",
+                  border: "1px solid #d0d7de",
+                  borderRadius: "6px",
+                  fontSize: "14px",
+                  fontFamily: "inherit",
+                  transition: "border-color 0.15s",
+                }}
+                onFocus={(e) => (e.target.style.borderColor = "#1f6feb")}
+                onBlur={(e) => (e.target.style.borderColor = "#d0d7de")}
+              />
+            </div>
+            <div
+              style={{ fontSize: "11px", color: "#57606a", marginTop: "4px" }}
+            >
+              Optional — for auto-sync from Slack messages
+            </div>
+          </div>
+        </div>
+        <div
+          className="popover-actions"
+          style={{
+            marginTop: "18px",
+            paddingTop: "14px",
+            borderTop: "1px solid #e5e5e5",
+          }}
+        >
+          <span className="popover-hint">⌘/Ctrl+Enter to save</span>
+          <button className="btn secondary" id="house-popover-cancel">
+            Cancel
+          </button>
+          <button className="btn" id="house-popover-save">
+            Add House
           </button>
         </div>
       </div>

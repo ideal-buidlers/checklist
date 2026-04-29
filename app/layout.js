@@ -1,5 +1,5 @@
 import "./globals.css";
-import { AuthProvider } from "./AuthProvider";
+import { AuthProvider } from "./auth";
 
 export const metadata = {
   title: "Ideal Builders — House Build Checklist",

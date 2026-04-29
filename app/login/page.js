@@ -1,37 +1,31 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "../../lib/supabase";
 import { useRouter } from "next/navigation";
+import { useAuth } from "../auth";
 
 export default function LoginPage() {
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const router = useRouter();
-  const supabase = createClient();
+  const { authenticate } = useAuth();
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+    const success = authenticate(password);
 
-      if (error) throw error;
-
+    if (success) {
       router.push("/");
       router.refresh();
-    } catch (error) {
-      setError(error.message);
-    } finally {
-      setLoading(false);
+    } else {
+      setError("Incorrect password");
     }
+
+    setLoading(false);
   };
 
   return (
@@ -63,21 +57,6 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin} style={styles.form}>
           <div style={styles.formGroup}>
-            <label htmlFor="email" style={styles.label}>
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              style={styles.input}
-            />
-          </div>
-
-          <div style={styles.formGroup}>
             <label htmlFor="password" style={styles.label}>
               Password
             </label>
@@ -86,7 +65,7 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
+              placeholder="Enter password"
               required
               style={styles.input}
             />
@@ -104,12 +83,7 @@ export default function LoginPage() {
         </form>
 
         <div style={styles.footer}>
-          <p style={styles.footerText}>
-            Don't have an account?{" "}
-            <a href="#" style={styles.link}>
-              Contact your administrator
-            </a>
-          </p>
+          <p style={styles.footerText}>Contact your administrator for access</p>
         </div>
       </div>
     </div>
