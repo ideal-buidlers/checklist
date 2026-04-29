@@ -480,18 +480,109 @@ function renderTabs() {
   let html = "";
   html += `<div class="tab" data-view="checklist">Checklist</div>`;
   html += `<div class="tab" data-view="summary">Summary</div>`;
+
   if (state.houses.length > 0) {
     html += `<div class="tab-divider"></div>`;
+    const activeCostView = activeView.startsWith("costs:") ? activeView : null;
+    const activeHouseIdx = activeCostView
+      ? parseInt(activeCostView.split(":")[1])
+      : -1;
+    const activeHouseName =
+      activeHouseIdx >= 0 ? state.houses[activeHouseIdx] : "Costs";
+
+    html += `<div class="costs-menu-wrapper">
+      <button class="costs-menu-btn ${activeCostView ? "active" : ""}" id="costs-menu-btn">
+        <span class="costs-icon">$</span>
+        <span>${escapeHtml(activeHouseName)}</span>
+        <span class="arrow">▼</span>
+      </button>
+      <div class="costs-dropdown" id="costs-dropdown">`;
+
+    state.houses.forEach((house, hIdx) => {
+      const isActive = activeView === `costs:${hIdx}`;
+      html += `<div class="costs-dropdown-item ${isActive ? "active" : ""}" data-view="costs:${hIdx}">
+        <span class="costs-icon">$</span>
+        <span>${escapeHtml(house)}</span>
+      </div>`;
+    });
+
+    html += `</div></div>`;
   }
-  state.houses.forEach((house, hIdx) => {
-    html += `<div class="tab costs-tab" data-view="costs:${hIdx}" title="Costs — ${escapeHtml(house)}">
-      <span class="costs-icon">$</span><span class="costs-tab-label">${escapeHtml(house)}</span>
-    </div>`;
-  });
+
+  // Add spacer and hamburger button
+  html += `<div class="spacer"></div>`;
+  html += `<button class="hamburger-btn" id="hamburger-btn">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50">
+      <path d="M 3 9 A 1.0001 1.0001 0 1 0 3 11 L 47 11 A 1.0001 1.0001 0 1 0 47 9 L 3 9 z M 3 24 A 1.0001 1.0001 0 1 0 3 26 L 47 26 A 1.0001 1.0001 0 1 0 47 24 L 3 24 z M 3 39 A 1.0001 1.0001 0 1 0 3 41 L 47 41 A 1.0001 1.0001 0 1 0 47 39 L 3 39 z"></path>
+    </svg>
+  </button>`;
+
   strip.innerHTML = html;
+
+  // Populate mobile menu costs
+  const mobileCostsList = document.getElementById("mobile-costs-list");
+  if (mobileCostsList) {
+    let mobileCostsHtml = "";
+    state.houses.forEach((house, hIdx) => {
+      const isActive = activeView === `costs:${hIdx}`;
+      mobileCostsHtml += `<button class="mobile-menu-item ${isActive ? "active" : ""}" data-view="costs:${hIdx}">
+        <span class="costs-icon">$</span>
+        <span>${escapeHtml(house)}</span>
+      </button>`;
+    });
+    mobileCostsList.innerHTML = mobileCostsHtml;
+
+    // Add click handlers for mobile costs items
+    document
+      .querySelectorAll("#mobile-costs-list .mobile-menu-item")
+      .forEach((item) => {
+        item.addEventListener("click", () => {
+          setActiveView(item.dataset.view);
+          closeMobileMenu();
+        });
+      });
+  }
+
   document.querySelectorAll("#tab-strip .tab").forEach((tab) => {
     tab.addEventListener("click", () => setActiveView(tab.dataset.view));
   });
+
+  // Hamburger menu button
+  const hamburgerBtn = document.getElementById("hamburger-btn");
+  if (hamburgerBtn) {
+    hamburgerBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openMobileMenu();
+    });
+  }
+
+  // Costs menu dropdown
+  const costsBtn = document.getElementById("costs-menu-btn");
+  const costsDropdown = document.getElementById("costs-dropdown");
+  if (costsBtn && costsDropdown) {
+    costsBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const isOpen = costsDropdown.classList.toggle("open");
+      if (isOpen) {
+        const rect = costsBtn.getBoundingClientRect();
+        costsDropdown.style.top = rect.bottom + "px";
+        costsDropdown.style.left = rect.left + "px";
+      }
+    });
+
+    document.querySelectorAll(".costs-dropdown-item").forEach((item) => {
+      item.addEventListener("click", () => {
+        setActiveView(item.dataset.view);
+        costsDropdown.classList.remove("open");
+      });
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener("click", () => {
+      costsDropdown.classList.remove("open");
+    });
+  }
+
   // mark active
   document
     .querySelectorAll("#tab-strip .tab")
@@ -1060,6 +1151,62 @@ document
     }
     if (e.key === "Escape") closeHousePopover();
   });
+
+// ========== Mobile Menu ==========
+function openMobileMenu() {
+  document.getElementById("mobile-menu").classList.add("open");
+  document.getElementById("mobile-menu-backdrop").classList.add("open");
+}
+
+function closeMobileMenu() {
+  document.getElementById("mobile-menu").classList.remove("open");
+  document.getElementById("mobile-menu-backdrop").classList.remove("open");
+}
+
+// Mobile menu close button
+document.addEventListener("click", (e) => {
+  const closeBtn = document.getElementById("mobile-menu-close");
+  if (closeBtn && e.target === closeBtn) {
+    closeMobileMenu();
+  }
+});
+
+// Mobile menu backdrop
+document.addEventListener("click", (e) => {
+  const backdrop = document.getElementById("mobile-menu-backdrop");
+  if (backdrop && e.target === backdrop) {
+    closeMobileMenu();
+  }
+});
+
+// Mobile sync slack
+document.addEventListener("click", (e) => {
+  const syncBtn = document.getElementById("mobile-sync-slack");
+  if (syncBtn && e.target.closest("#mobile-sync-slack")) {
+    closeMobileMenu();
+    syncFromSlack();
+  }
+});
+
+// Mobile add house
+document.addEventListener("click", (e) => {
+  const addBtn = document.getElementById("mobile-add-house");
+  if (addBtn && e.target.closest("#mobile-add-house")) {
+    closeMobileMenu();
+    openHousePopover();
+  }
+});
+
+// Mobile logout
+document.addEventListener("click", (e) => {
+  const logoutBtn = document.getElementById("mobile-logout");
+  if (logoutBtn && e.target.closest("#mobile-logout")) {
+    closeMobileMenu();
+    if (window.location.pathname !== "/login") {
+      window.location.href = "/login";
+    }
+  }
+});
 
 // ========== Slack integration ==========
 function showBanner(text, type = "info") {

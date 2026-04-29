@@ -238,6 +238,47 @@ export default function Home() {
           __html: `window.__SUPABASE_URL="${process.env.NEXT_PUBLIC_SUPABASE_URL}";window.__SUPABASE_ANON_KEY="${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}";`,
         }}
       />
+      <div className="mobile-menu-backdrop" id="mobile-menu-backdrop"></div>
+      <div className="mobile-menu" id="mobile-menu">
+        <div className="mobile-menu-header">
+          <div className="mobile-menu-title">Menu</div>
+          <button className="mobile-menu-close" id="mobile-menu-close">
+            ×
+          </button>
+        </div>
+        <div className="mobile-menu-section">
+          <div className="mobile-menu-section-title">Actions</div>
+          <button className="mobile-menu-item" id="mobile-sync-slack">
+            <span>🔄</span>
+            <span>Sync from Slack</span>
+          </button>
+          <button className="mobile-menu-item" id="mobile-add-house">
+            <span>+</span>
+            <span>Add House</span>
+          </button>
+        </div>
+        <div className="mobile-menu-section" id="mobile-costs-section">
+          <div className="mobile-menu-section-title">House Costs</div>
+          <div id="mobile-costs-list"></div>
+        </div>
+        <div
+          className="mobile-menu-section"
+          style={{
+            marginTop: "auto",
+            borderTop: "2px solid #e5e5e5",
+            borderBottom: "none",
+          }}
+        >
+          <button
+            className="mobile-menu-item"
+            id="mobile-logout"
+            style={{ color: "#cf222e" }}
+          >
+            <span>🚪</span>
+            <span>Logout</span>
+          </button>
+        </div>
+      </div>
       <Script src="/supabase-bridge.js" strategy="afterInteractive" />
       <Script src="/app-logic.js" strategy="afterInteractive" />
     </>
