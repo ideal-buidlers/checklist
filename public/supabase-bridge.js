@@ -8,8 +8,11 @@
  */
 
 (function () {
-  const SUPABASE_URL = window.__SUPABASE_URL;
-  const SUPABASE_KEY = window.__SUPABASE_ANON_KEY;
+  const SUPABASE_URL =
+    window.__SUPABASE_URL || "https://yywbjhegbxowhzkrazzj.supabase.co";
+  const SUPABASE_KEY =
+    window.__SUPABASE_ANON_KEY ||
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5d2JqaGVnYnhvd2h6a3JhenpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NjQ5NDAsImV4cCI6MjA5MzA0MDk0MH0.sUME9IqlISueFNon_-udF2tLSoQpIH2cVpjXsbPYayM";
 
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     console.warn(

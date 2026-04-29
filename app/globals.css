@@ -389,6 +389,15 @@ td.check-cell.from-slack {
 td.check-cell.from-slack:hover {
   background: #fde68a;
 }
+td.check-cell.from-slack .status-btn.status-done {
+  background: #e28a00;
+  border-color: #e28a00;
+  color: #fff;
+}
+td.check-cell.from-slack .status-btn.status-done:hover {
+  background: #c97a00;
+  border-color: #c97a00;
+}
 /* Status popup */
 .status-popup {
   position: fixed;

@@ -961,41 +961,6 @@ function setAutoSyncStatus(text) {
   document.getElementById("auto-sync-status").textContent = text;
 }
 
-function parseChannelId(markdown, name) {
-  const re = /archives\/(C[A-Z0-9]+)/g;
-  const matches = [...markdown.matchAll(re)];
-  if (matches.length === 0) return null;
-  const byName = new RegExp(`Name:\\s*#${escapeRegex(name)}\\b`, "i");
-  const blocks = markdown.split("---");
-  for (const block of blocks) {
-    if (byName.test(block)) {
-      const m = block.match(/archives\/(C[A-Z0-9]+)/);
-      if (m) return m[1];
-    }
-  }
-  return matches[0][1];
-}
-function parseMessages(markdown) {
-  const out = [];
-  const body = markdown.replace(/^Channel:[^\n]*\n+/, "");
-  const blocks = body.split(/\n\n+/);
-  for (const block of blocks) {
-    if (!block.trim()) continue;
-    const m = block.match(/^([^:\n]+):\s*([\s\S]*?)\s*\[([^\]]+)\]\s*$/);
-    if (m) {
-      const author = m[1].trim(),
-        text = m[2].trim(),
-        ts = m[3].trim();
-      if (/has joined the channel/.test(text)) continue;
-      if (text) out.push({ author, text, ts });
-    }
-  }
-  return out;
-}
-function escapeRegex(s) {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 async function syncFromSlack(opts = { silent: false }) {
   const btn = document.getElementById("sync-slack-btn");
   let orig;
@@ -1023,109 +988,72 @@ async function syncFromSlack(opts = { silent: false }) {
       setAutoSyncStatus("");
       return;
     }
-    let totalNew = 0;
-    const errors = [];
-    for (const { house, hIdx, channel } of housesWithChannels) {
-      try {
-        const searchRes = await window.cowork.callMcpTool(
-          "mcp__dab8bc6f-ffa9-4041-9df2-1d8e0e2a00c4__slack_search_channels",
-          { query: channel, limit: 5 },
-        );
-        if (searchRes.isError) {
-          errors.push(`${house}: search failed`);
-          continue;
-        }
-        const searchText =
-          searchRes.structuredContent?.results ||
-          (searchRes.content && searchRes.content[0]?.text) ||
-          JSON.stringify(searchRes);
-        const channelId = parseChannelId(searchText, channel);
-        if (!channelId) {
-          errors.push(`${house}: channel #${channel} not found`);
-          continue;
-        }
-        const readRes = await window.cowork.callMcpTool(
-          "mcp__dab8bc6f-ffa9-4041-9df2-1d8e0e2a00c4__slack_read_channel",
-          { channel_id: channelId, limit: 50, response_format: "concise" },
-        );
-        if (readRes.isError) {
-          errors.push(`${house}: read failed`);
-          continue;
-        }
-        const readText =
-          readRes.structuredContent?.messages ||
-          (readRes.content && readRes.content[0]?.text) ||
-          "";
-        const messages = parseMessages(readText);
-        if (messages.length === 0) continue;
-        const unchecked = [];
+    // Build payload: each house with its unchecked items
+    const payload = housesWithChannels
+      .map(({ house, hIdx, channel }) => {
+        const items = [];
         state.sections.forEach((section, sIdx) => {
           section.items.forEach((item, iIdx) => {
             const k = `${hIdx}|${sIdx}|${iIdx}`;
-            if (!state.status[k])
-              unchecked.push({
-                sIdx,
-                iIdx,
-                key: k,
-                text: item,
-                section: section.name,
-              });
+            if (!state.status[k]) items.push({ sIdx, iIdx, text: item });
           });
         });
-        if (unchecked.length === 0) continue;
-        const prompt = `You are matching Slack status updates to construction checklist items.
+        return { hIdx, house, channel, items };
+      })
+      .filter((h) => h.items.length > 0);
 
-HOUSE: ${house}
+    let totalNew = 0;
+    const errors = [];
 
-CHECKLIST ITEMS (these are tasks that have NOT been done yet):
-${unchecked.map((u, idx) => `${idx}. ${u.text}`).join("\n")}
+    if (payload.length === 0) {
+      setAutoSyncStatus("");
+      if (!opts.silent) showBanner("All items already have a status.", "info");
+      return;
+    }
 
-SLACK MESSAGES (most recent first):
-${messages.map((m, idx) => `${idx}. [${m.author}] ${m.text}`).join("\n")}
+    const supabaseUrl =
+      window.__SUPABASE_URL || "https://yywbjhegbxowhzkrazzj.supabase.co";
+    const fnUrl = `${supabaseUrl}/functions/v1/slack-sync`;
+    const token = window.__SUPABASE_TOKEN || window.__SUPABASE_ANON_KEY;
+    let fnResult;
+    try {
+      const res = await fetch(fnUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ houses: payload }),
+      });
+      if (!res.ok)
+        throw new Error(
+          `Edge Function error ${res.status}: ${await res.text()}`,
+        );
+      fnResult = await res.json();
+    } catch (err) {
+      throw new Error(`Slack sync failed: ${err.message || err}`);
+    }
 
-Return a JSON array. For each Slack message that clearly indicates a checklist item was COMPLETED or DONE (e.g., "applied for permit", "demo'd the house", "installed footings", "ordered windows"), output:
-{"messageIdx": <number>, "itemIdx": <number>}
+    if (fnResult.errors) errors.push(...fnResult.errors);
 
-Only include matches where the message clearly indicates the task was done — past tense or completion statements. Do NOT match plans, questions, or future tense ("will do", "need to", "should we").
-Match the BEST single item per message. If no message matches anything, return [].
-Return ONLY the JSON array, no other text.`;
-        const result = await window.cowork.sample(prompt);
-        if (result.isError) {
-          errors.push(`${house}: AI matching failed`);
-          continue;
-        }
-        let matches = [];
-        try {
-          const txt = (result.text || "")
-            .trim()
-            .replace(/^```json\s*|\s*```$/g, "")
-            .replace(/^```\s*|\s*```$/g, "");
-          matches = JSON.parse(txt);
-          if (!Array.isArray(matches)) matches = [];
-        } catch (e) {
-          errors.push(`${house}: couldn't parse matches`);
-          continue;
-        }
-        for (const m of matches) {
-          if (typeof m.messageIdx !== "number" || typeof m.itemIdx !== "number")
-            continue;
-          const item = unchecked[m.itemIdx];
-          const msg = messages[m.messageIdx];
-          if (!item || !msg) continue;
-          if (state.status[item.key]) continue;
-          state.status[item.key] = "done";
-          state.checkSource[item.key] = "slack";
-          state.slackEvidence[item.key] = {
-            channel,
-            text: msg.text,
-            author: msg.author,
-            ts: msg.ts,
-          };
-          totalNew++;
-        }
-      } catch (err) {
-        errors.push(`${house}: ${err.message || err}`);
-      }
+    for (const match of fnResult.results || []) {
+      const { hIdx, sIdx, iIdx, channel, text, author, ts } = match;
+      const k = `${hIdx}|${sIdx}|${iIdx}`;
+      if (state.status[k]) continue;
+      state.status[k] = "done";
+      state.checkSource[k] = "slack";
+      state.slackEvidence[k] = { channel, text, author, ts };
+      if (window.__db)
+        window.__db.persistStatus(
+          hIdx,
+          sIdx,
+          iIdx,
+          "done",
+          "slack",
+          state.slackEvidence[k],
+          state.notes[k],
+        );
+      totalNew++;
     }
     saveState();
     renderChecklist();
