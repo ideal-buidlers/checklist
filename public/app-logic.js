@@ -1,5 +1,7 @@
-const PENCIL_SVG =
-  '<svg viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758zm1.414 1.06a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354zm-.013 3.764-1.44-1.44-5.92 5.922a.25.25 0 0 0-.064.108l-.558 1.953 1.953-.558a.25.25 0 0 0 .108-.064z"/></svg>';
+const PENCIL_OUTLINE_SVG =
+  '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" xmlns="http://www.w3.org/2000/svg"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758zm1.414 1.06a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354zm-.013 3.764-1.44-1.44-5.92 5.922a.25.25 0 0 0-.064.108l-.558 1.953 1.953-.558a.25.25 0 0 0 .108-.064z"/></svg>';
+const NOTE_FILLED_SVG =
+  '<svg viewBox="0 0 16 16" fill="currentColor" xmlns="http://www.w3.org/2000/svg"><path d="M0 3.75C0 2.784.784 2 1.75 2h12.5c.966 0 1.75.784 1.75 1.75v8.5A1.75 1.75 0 0 1 14.25 14H1.75A1.75 1.75 0 0 1 0 12.25Zm1.75-.25a.25.25 0 0 0-.25.25v8.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25v-8.5a.25.25 0 0 0-.25-.25Z"/><path d="M1 5.5h14v1H1z"/><path d="M3 8h5v1H3z"/></svg>';
 
 // File-type icons (small, monochrome)
 const ICON_DOC =
@@ -596,7 +598,7 @@ function renderChecklist() {
             <button class="status-btn status-${status || "none"}" data-key="${k}" data-h="${hIdx}" data-s="${sIdx}" data-i="${iIdx}" title="Set status">${statusLabel(status)}</button>
             <button class="note-btn ${hasNote ? "has-note" : ""}"
               data-key="${k}" data-h="${hIdx}" data-s="${sIdx}" data-i="${iIdx}"
-              title="${hasNote ? escapeHtml(note).slice(0, 200) : "Add note"}">${PENCIL_SVG}</button>
+              title="${hasNote ? escapeHtml(note).slice(0, 200) : "Add note"}">${hasNote ? NOTE_FILLED_SVG : PENCIL_OUTLINE_SVG}</button>
           </div>
         </td>`;
       });
@@ -1237,8 +1239,7 @@ function renderSummary() {
   let html = `<h2>Summary by House</h2><div class="house-cards">`;
   state.houses.forEach((house, hIdx) => {
     let doneCount = 0,
-      noteCount = 0,
-      slackCount = 0;
+      noteCount = 0;
     const bySection = state.sections.map((s, sIdx) => {
       const rows = [];
       s.items.forEach((item, iIdx) => {
@@ -1247,19 +1248,14 @@ function renderSummary() {
         const checked = !!status;
         const note = state.notes[k] || "";
         const source = state.checkSource[k] || "manual";
-        const ev = state.slackEvidence[k];
         if (checked) doneCount++;
-        if (note) noteCount++;
-        if (checked && source === "slack") slackCount++;
-        if (checked || note)
-          rows.push({ item, status, checked, note, source, evidence: ev });
+        if (checked || note) rows.push({ item, status, checked, note });
       });
       return { section: s.name, rows };
     });
     const pct = totalItems ? Math.round((doneCount / totalItems) * 100) : 0;
-    const slackBadge = slackCount > 0 ? ` · ${slackCount} from Slack` : "";
     html += `<div class="house-card">
-      <h3>${escapeHtml(house)} <span class="count-badge">${doneCount} / ${totalItems} done · ${noteCount} note${noteCount === 1 ? "" : "s"}${slackBadge}</span></h3>
+      <h3>${escapeHtml(house)} <span class="count-badge">${doneCount} / ${totalItems} done · ${noteCount} note${noteCount === 1 ? "" : "s"}</span></h3>
       <div class="progress"><div style="width:${pct}%"></div></div>`;
     const anyContent = bySection.some((s) => s.rows.length > 0);
     if (!anyContent) {
@@ -1278,13 +1274,9 @@ function renderSummary() {
                 : r.status === "ordered"
                   ? "O"
                   : "○";
-          const badge =
-            r.checked && r.source === "slack"
-              ? '<span class="src-badge slack">SLACK</span>'
-              : "";
+          const badge = "";
           html += `<li class="item-line ${r.checked ? "done" : ""}">
             <span class="item-text">${mark} ${escapeHtml(r.item)}</span>${badge}
-            ${r.evidence ? `<div class="slack-evidence">${escapeHtml(r.evidence.author)}: "${escapeHtml(r.evidence.text)}"</div>` : ""}
             ${r.note ? `<div class="note-display">${escapeHtml(r.note)}</div>` : ""}
           </li>`;
         });
