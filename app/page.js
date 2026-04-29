@@ -2,8 +2,50 @@
 
 import { useEffect } from "react";
 import Script from "next/script";
+import { useAuth } from "./AuthProvider";
+import { useRouter } from "next/navigation";
+import { createClient } from "../lib/supabase";
 
 export default function Home() {
+  const { user, loading, signOut } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!loading && !user) {
+      router.push("/login");
+    }
+  }, [user, loading, router]);
+
+  useEffect(() => {
+    if (!user) return;
+    createClient()
+      .auth.getSession()
+      .then(({ data: { session } }) => {
+        if (session?.access_token) {
+          window.__SUPABASE_TOKEN = session.access_token;
+        }
+      });
+  }, [user]);
+
+  if (loading) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100vh",
+        }}
+      >
+        <div>Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return null;
+  }
+
   return (
     <>
       <div className="app">
@@ -38,6 +80,13 @@ export default function Home() {
             </button>
             <button className="btn" id="add-house-btn">
               + Add House
+            </button>
+            <button
+              className="btn secondary"
+              onClick={signOut}
+              style={{ marginLeft: "8px" }}
+            >
+              Sign Out
             </button>
           </div>
         </div>
@@ -86,6 +135,14 @@ export default function Home() {
           </button>
         </div>
       </div>
+      <Script
+        id="supabase-config"
+        strategy="beforeInteractive"
+        dangerouslySetInnerHTML={{
+          __html: `window.__SUPABASE_URL="${process.env.NEXT_PUBLIC_SUPABASE_URL}";window.__SUPABASE_ANON_KEY="${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}";`,
+        }}
+      />
+      <Script src="/supabase-bridge.js" strategy="afterInteractive" />
       <Script src="/app-logic.js" strategy="afterInteractive" />
     </>
   );
