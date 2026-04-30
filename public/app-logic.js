@@ -1588,8 +1588,10 @@ async function loadDriveFilesForHouse(hIdx) {
         const houseName = state.houses[hIdx];
         console.log(`Creating Drive folder for house: ${houseName}`);
         await createDriveFolderForHouse(houseName, houseId);
-        // Fetch the newly created folder data
+        // Wait a moment for database to sync, then fetch the newly created folder data
+        await new Promise((resolve) => setTimeout(resolve, 500));
         folderData = await window.__db?.getHouseDriveFolder(houseId);
+        console.log("Folder data after creation:", folderData);
       } catch (err) {
         console.error("Failed to create Drive folder:", err);
         // If creation fails (e.g., no token), just show empty state
