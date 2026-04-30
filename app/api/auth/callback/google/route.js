@@ -1,3 +1,5 @@
+import { createClient } from "@supabase/supabase-js";
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
@@ -5,13 +7,13 @@ export async function GET(request) {
 
   if (error) {
     return Response.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/?error=${encodeURIComponent(error)}`
+      `${process.env.NEXT_PUBLIC_APP_URL}/?error=${encodeURIComponent(error)}`,
     );
   }
 
   if (!code) {
     return Response.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/?error=no_code`
+      `${process.env.NEXT_PUBLIC_APP_URL}/?error=no_code`,
     );
   }
 
@@ -38,7 +40,7 @@ export async function GET(request) {
       const error = await tokenResponse.text();
       console.error("Token exchange failed:", error);
       return Response.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/?error=token_exchange_failed`
+        `${process.env.NEXT_PUBLIC_APP_URL}/?error=token_exchange_failed`,
       );
     }
 
@@ -48,33 +50,39 @@ export async function GET(request) {
     if (!refresh_token) {
       console.error("No refresh token received from Google");
       return Response.redirect(
-        `${process.env.NEXT_PUBLIC_APP_URL}/?error=no_refresh_token`
+        `${process.env.NEXT_PUBLIC_APP_URL}/?error=no_refresh_token`,
       );
     }
 
-    const response = Response.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/?google_auth=success`
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY,
     );
 
-    response.cookies.set("google_access_token", access_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: expires_in,
-    });
+    const { error: insertError } = await supabase.from("google_tokens").upsert(
+      {
+        refresh_token,
+        access_token,
+        expires_at: new Date(Date.now() + expires_in * 1000).toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" },
+    );
 
-    response.cookies.set("google_refresh_token", refresh_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 60 * 60 * 24 * 365,
-    });
+    if (insertError) {
+      console.error("Failed to store tokens in Supabase:", insertError);
+      return Response.redirect(
+        `${process.env.NEXT_PUBLIC_APP_URL}/?error=storage_failed`,
+      );
+    }
 
-    return response;
+    return Response.redirect(
+      `${process.env.NEXT_PUBLIC_APP_URL}/?google_auth=success`,
+    );
   } catch (error) {
     console.error("OAuth callback error:", error);
     return Response.redirect(
-      `${process.env.NEXT_PUBLIC_APP_URL}/?error=callback_error`
+      `${process.env.NEXT_PUBLIC_APP_URL}/?error=callback_error`,
     );
   }
 }

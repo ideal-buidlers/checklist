@@ -8,10 +8,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [showGooglePrompt, setShowGooglePrompt] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
   const router = useRouter();
-  const { authenticate, initiateGoogleAuth } = useAuth();
+  const { authenticate } = useAuth();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -21,88 +19,13 @@ export default function LoginPage() {
     const success = authenticate(password);
 
     if (success) {
-      setShowGooglePrompt(true);
-      setLoading(false);
+      router.push("/");
+      router.refresh();
     } else {
       setError("Incorrect password");
       setLoading(false);
     }
   };
-
-  const handleGoogleAuth = () => {
-    setGoogleLoading(true);
-    initiateGoogleAuth();
-  };
-
-  const handleSkipGoogle = () => {
-    router.push("/");
-    router.refresh();
-  };
-
-  if (showGooglePrompt) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.card}>
-          <div style={styles.brand}>
-            <svg
-              style={styles.brandIcon}
-              viewBox="0 0 70 50"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-            >
-              <path
-                d="M5 44 L5 14 L35 4 L65 14 L65 44"
-                fill="none"
-                stroke="#C8A157"
-                strokeWidth="3.5"
-                strokeLinecap="square"
-                strokeLinejoin="miter"
-              />
-            </svg>
-            <span style={styles.brandText}>IDEAL BUILDERS</span>
-          </div>
-
-          <h1 style={styles.title}>Connect Google Drive</h1>
-          <p style={styles.subtitle}>
-            Allow access to your Google Drive to sync documents
-          </p>
-
-          <div style={styles.googlePrompt}>
-            <p style={styles.promptText}>
-              We need permission to access your Google Drive to find and link
-              relevant documents to your projects.
-            </p>
-
-            <div style={styles.buttonGroup}>
-              <button
-                onClick={handleGoogleAuth}
-                disabled={googleLoading}
-                style={
-                  googleLoading ? styles.buttonDisabled : styles.googleButton
-                }
-              >
-                {googleLoading ? "Connecting..." : "Connect Google Drive"}
-              </button>
-
-              <button
-                onClick={handleSkipGoogle}
-                disabled={googleLoading}
-                style={styles.skipButton}
-              >
-                Skip for now
-              </button>
-            </div>
-          </div>
-
-          <div style={styles.footer}>
-            <p style={styles.footerText}>
-              You can connect Google Drive later in settings
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div style={styles.container}>
@@ -266,44 +189,6 @@ const styles = {
     fontSize: "14px",
     fontWeight: "500",
     cursor: "not-allowed",
-  },
-  googlePrompt: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "20px",
-  },
-  promptText: {
-    fontSize: "14px",
-    color: "#57606a",
-    margin: "0",
-    lineHeight: "1.5",
-  },
-  buttonGroup: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-  },
-  googleButton: {
-    padding: "12px",
-    background: "#4285f4",
-    color: "#ffffff",
-    border: "none",
-    borderRadius: "6px",
-    fontSize: "14px",
-    fontWeight: "500",
-    cursor: "pointer",
-    transition: "background 0.15s",
-  },
-  skipButton: {
-    padding: "12px",
-    background: "#f0f0f0",
-    color: "#24292f",
-    border: "1px solid #d0d7de",
-    borderRadius: "6px",
-    fontSize: "14px",
-    fontWeight: "500",
-    cursor: "pointer",
-    transition: "background 0.15s",
   },
   footer: {
     marginTop: "24px",
