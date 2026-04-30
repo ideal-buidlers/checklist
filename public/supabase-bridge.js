@@ -476,6 +476,18 @@
         console.error("[bridge] removeDriveExclusion", e);
       }
     },
+    getHouseDriveFolder: async (houseId) => {
+      try {
+        const data = await query(
+          "house_drive_folders",
+          `house_id=eq.${houseId}`,
+        );
+        return data && data.length > 0 ? data[0] : null;
+      } catch (e) {
+        console.error("[bridge] getHouseDriveFolder", e);
+        return null;
+      }
+    },
   };
 
   // ── Bootstrap ────────────────────────────────────────────────────────────────
