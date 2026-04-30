@@ -246,6 +246,7 @@
 
     return {
       houses: houseNames,
+      houseIds: houseIds,
       sections: sections.map((s) => ({ name: s.name, items: [...s.items] })),
       status: statusMap,
       notes: notesMap,
