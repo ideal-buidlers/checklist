@@ -29,14 +29,20 @@ function iconForMime(mime) {
 
 // ── Google Drive Integration ────────────────────────────────────────────
 
-const DRIVE_FUNCTION_URL = `${window.__SUPABASE_URL}/functions/v1/manage-drive-folders`;
+// Get Supabase credentials (same as supabase-bridge.js)
+const SUPABASE_URL =
+  window.__SUPABASE_URL || "https://yywbjhegbxowhzkrazzj.supabase.co";
+const SUPABASE_ANON_KEY =
+  window.__SUPABASE_ANON_KEY ||
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5d2JqaGVnYnhvd2h6a3JhenpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NjQ5NDAsImV4cCI6MjA5MzA0MDk0MH0.sUME9IqlISueFNon_-udF2tLSoQpIH2cVpjXsbPYayM";
+const DRIVE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/manage-drive-folders`;
 
 async function callDriveFunction(action, params = {}) {
   const response = await fetch(DRIVE_FUNCTION_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${window.__SUPABASE_ANON_KEY}`,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
     },
     body: JSON.stringify({ action, ...params }),
   });
