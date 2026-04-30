@@ -1580,10 +1580,27 @@ async function loadDriveFilesForHouse(hIdx) {
     }
 
     // Get folder ID from database
-    const folderData = await window.__db?.getHouseDriveFolder(houseId);
+    let folderData = await window.__db?.getHouseDriveFolder(houseId);
+
+    // If no folder exists, try to create it
     if (!folderData || !folderData.drive_folder_id) {
-      // No folder exists - this is ok, just show empty state
-      // Folder will be created when house is added (if token exists)
+      try {
+        const houseName = state.houses[hIdx];
+        console.log(`Creating Drive folder for house: ${houseName}`);
+        await createDriveFolderForHouse(houseName, houseId);
+        // Fetch the newly created folder data
+        folderData = await window.__db?.getHouseDriveFolder(houseId);
+      } catch (err) {
+        console.error("Failed to create Drive folder:", err);
+        // If creation fails (e.g., no token), just show empty state
+        driveCache[hIdx] = { loading: false, files: [], error: null };
+        renderSummary();
+        return;
+      }
+    }
+
+    // If still no folder, show empty state
+    if (!folderData || !folderData.drive_folder_id) {
       driveCache[hIdx] = { loading: false, files: [], error: null };
       renderSummary();
       return;
