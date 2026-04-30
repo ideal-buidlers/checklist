@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import Script from "next/script";
-import { useAuth } from "./auth";
+import { useAuth } from "../auth";
 import { useRouter } from "next/navigation";
 
 export default function Home() {
