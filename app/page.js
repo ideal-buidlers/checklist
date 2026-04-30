@@ -281,6 +281,35 @@ export default function Home() {
       </div>
       <Script src="/supabase-bridge.js" strategy="afterInteractive" />
       <Script src="/app-logic.js" strategy="afterInteractive" />
+      <div style={styles.footer}>
+        <a href="/privacy" style={styles.link}>
+          Privacy
+        </a>
+        <span style={styles.separator}>•</span>
+        <a href="/tos" style={styles.link}>
+          Terms
+        </a>
+      </div>
     </>
   );
 }
+
+const styles = {
+  footer: {
+    position: "fixed",
+    bottom: "8px",
+    right: "12px",
+    fontSize: "10px",
+    color: "#ccc",
+    zIndex: 1,
+  },
+  link: {
+    color: "#ccc",
+    textDecoration: "none",
+    transition: "color 0.2s",
+  },
+  separator: {
+    margin: "0 4px",
+    color: "#ccc",
+  },
+};
