@@ -85,6 +85,15 @@ export default function LoginPage() {
           <p style={styles.footerText}>Contact your administrator for access</p>
         </div>
       </div>
+      <div style={styles.footerLink}>
+        <a href="/privacy" style={styles.footerLinkAnchor}>
+          Privacy
+        </a>
+        <span style={styles.separator}>•</span>
+        <a href="/tos" style={styles.footerLinkAnchor}>
+          Terms
+        </a>
+      </div>
     </div>
   );
 }
@@ -202,5 +211,22 @@ const styles = {
   link: {
     color: "#1f6feb",
     textDecoration: "none",
+  },
+  footerLink: {
+    position: "fixed",
+    bottom: "8px",
+    right: "12px",
+    fontSize: "10px",
+    color: "#ccc",
+    zIndex: 1,
+  },
+  footerLinkAnchor: {
+    color: "#ccc",
+    textDecoration: "none",
+    transition: "color 0.2s",
+  },
+  separator: {
+    margin: "0 4px",
+    color: "#ccc",
   },
 };
