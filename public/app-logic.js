@@ -50,13 +50,22 @@ async function callDriveFunction(action, params = {}) {
 }
 
 async function createDriveFolderForHouse(houseName, houseId) {
-  console.log(`Creating Drive folder for house: ${houseName}`);
-  const result = await callDriveFunction("create-house-folder", {
-    houseName,
-    houseId,
-  });
-  console.log("Drive folder created:", result);
-  return result;
+  try {
+    console.log(`Creating Drive folder for house: ${houseName}`);
+    const result = await callDriveFunction("create-house-folder", {
+      houseName,
+      houseId,
+    });
+    console.log("Drive folder created:", result);
+    return result;
+  } catch (err) {
+    // Silently fail if no token - folder creation is optional
+    if (err.message && err.message.includes("No Google tokens found")) {
+      console.log("Google token not available yet, skipping folder creation");
+      return null;
+    }
+    throw err;
+  }
 }
 
 async function listDriveFiles(folderId) {
@@ -1567,6 +1576,8 @@ async function loadDriveFilesForHouse(hIdx) {
     // Get folder ID from database
     const folderData = await window.__db?.getHouseDriveFolder(houseId);
     if (!folderData || !folderData.drive_folder_id) {
+      // No folder exists - this is ok, just show empty state
+      // Folder will be created when house is added (if token exists)
       driveCache[hIdx] = { loading: false, files: [], error: null };
       renderSummary();
       return;
@@ -1577,7 +1588,12 @@ async function loadDriveFilesForHouse(hIdx) {
     driveCache[hIdx] = { loading: false, files, error: null };
   } catch (err) {
     console.error("Failed to load Drive files:", err);
-    driveCache[hIdx] = { loading: false, files: [], error: err.message };
+    // Check if error is due to missing token
+    if (err.message && err.message.includes("No Google tokens found")) {
+      driveCache[hIdx] = { loading: false, files: [], error: null };
+    } else {
+      driveCache[hIdx] = { loading: false, files: [], error: err.message };
+    }
   }
 
   renderSummary();
