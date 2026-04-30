@@ -1,315 +1,206 @@
 "use client";
 
-import { useEffect } from "react";
-import Script from "next/script";
-import { useAuth } from "./auth";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuth } from "../auth";
 
-export default function Home() {
-  const { isAuthenticated, loading, signOut } = useAuth();
+export default function LoginPage() {
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const router = useRouter();
+  const { authenticate } = useAuth();
 
-  useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      router.push("/login");
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    const success = authenticate(password);
+
+    if (success) {
+      router.push("/home");
+      router.refresh();
+    } else {
+      setError("Incorrect password");
+      setLoading(false);
     }
-  }, [isAuthenticated, loading, router]);
-
-  if (loading) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-        }}
-      >
-        <div>Loading...</div>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return null;
-  }
+  };
 
   return (
-    <>
-      <div className="app">
-        <div className="tabs">
-          <div className="brand" title="Ideal Builders">
-            <svg
-              className="brand-icon"
-              viewBox="0 0 70 50"
-              xmlns="http://www.w3.org/2000/svg"
-              aria-hidden="true"
-            >
-              <path
-                d="M5 44 L5 14 L35 4 L65 14 L65 44"
-                fill="none"
-                stroke="#C8A157"
-                strokeWidth="3.5"
-                strokeLinecap="square"
-                strokeLinejoin="miter"
-              />
-            </svg>
-            <span className="brand-text">IDEAL BUILDERS</span>
-          </div>
-          <div id="tab-strip" style={{ display: "contents" }}></div>
-          <div className="spacer"></div>
-          <div className="toolbar" id="toolbar-checklist">
-            <button
-              className="btn slack"
-              id="sync-slack-btn"
-              title="Read recent Slack messages and auto-check matching items"
-            >
-              Sync from Slack
-            </button>
-            <button className="btn" id="add-house-btn">
-              + Add House
-            </button>
-            <button
-              className="btn secondary"
-              onClick={signOut}
-              style={{ marginLeft: "8px" }}
-            >
-              Sign Out
-            </button>
-          </div>
+    <div style={styles.container}>
+      <div style={styles.card}>
+        <div style={styles.brand}>
+          <svg
+            style={styles.brandIcon}
+            viewBox="0 0 70 50"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+          >
+            <path
+              d="M5 44 L5 14 L35 4 L65 14 L65 44"
+              fill="none"
+              stroke="#C8A157"
+              strokeWidth="3.5"
+              strokeLinecap="square"
+              strokeLinejoin="miter"
+            />
+          </svg>
+          <span style={styles.brandText}>IDEAL BUILDERS</span>
         </div>
-        <div className="banner" id="banner"></div>
-        <div className="legend" id="legend">
-          <span className="legend-item">
-            <span className="legend-swatch manual"></span> Manual check
-          </span>
-          <span className="legend-item">
-            <span className="legend-swatch slack"></span> From Slack — click to
-            confirm
-          </span>
-          <span className="legend-item">
-            Auto-sync runs every time you open the dashboard.
-          </span>
-          <span
-            className="legend-item auto-sync-status"
-            id="auto-sync-status"
-          ></span>
-        </div>
-        <div className="pane" id="pane-checklist">
-          <div className="checklist-wrap">
-            <table className="checklist" id="checklist-table"></table>
-          </div>
-        </div>
-        <div className="pane" id="pane-summary" style={{ display: "none" }}>
-          <div className="summary" id="summary-content"></div>
-        </div>
-        <div className="pane" id="pane-costs" style={{ display: "none" }}></div>
-      </div>
-      <div className="popover-backdrop" id="popover-backdrop"></div>
-      <div className="popover" id="note-popover">
-        <div className="popover-title" id="popover-house"></div>
-        <div className="popover-subtitle" id="popover-item"></div>
-        <textarea
-          id="popover-textarea"
-          placeholder="Add a note (e.g., contractor, date, blocker)…"
-        ></textarea>
-        <div className="popover-actions">
-          <span className="popover-hint">⌘/Ctrl+Enter to save</span>
-          <button className="btn secondary" id="popover-cancel">
-            Cancel
-          </button>
-          <button className="btn" id="popover-save">
-            Save
-          </button>
-        </div>
-      </div>
-      <div
-        className="popover"
-        id="house-popover"
-        style={{ width: "380px", padding: "16px" }}
-      >
-        <div className="popover-title">New House</div>
-        <div className="popover-subtitle">
-          Add a house to your build portfolio
-        </div>
-        <div style={{ marginTop: "16px" }}>
-          <div style={{ marginBottom: "14px" }}>
-            <label
-              htmlFor="house-name-input"
-              style={{
-                fontSize: "11px",
-                fontWeight: "600",
-                color: "#24292f",
-                display: "block",
-                marginBottom: "6px",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-              }}
-            >
-              House Address *
+
+        <h1 style={styles.title}>Sign In</h1>
+        <p style={styles.subtitle}>
+          Access your construction checklist dashboard
+        </p>
+
+        <form onSubmit={handleLogin} style={styles.form}>
+          <div style={styles.formGroup}>
+            <label htmlFor="password" style={styles.label}>
+              Password
             </label>
             <input
-              id="house-name-input"
-              type="text"
-              placeholder="e.g., 519 E Farnum"
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                border: "1px solid #d0d7de",
-                borderRadius: "6px",
-                fontSize: "14px",
-                fontFamily: "inherit",
-                transition: "border-color 0.15s",
-              }}
-              onFocus={(e) => (e.target.style.borderColor = "#1f6feb")}
-              onBlur={(e) => (e.target.style.borderColor = "#d0d7de")}
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter password"
+              required
+              style={styles.input}
             />
           </div>
-          <div style={{ marginBottom: "16px" }}>
-            <label
-              htmlFor="house-slack-input"
-              style={{
-                fontSize: "11px",
-                fontWeight: "600",
-                color: "#24292f",
-                display: "block",
-                marginBottom: "6px",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-              }}
-            >
-              Slack Channel
-            </label>
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span
-                style={{
-                  color: "#57606a",
-                  fontSize: "14px",
-                  fontWeight: "600",
-                }}
-              >
-                #
-              </span>
-              <input
-                id="house-slack-input"
-                type="text"
-                placeholder="e.g., 519_farnum"
-                style={{
-                  flex: 1,
-                  padding: "10px 12px",
-                  border: "1px solid #d0d7de",
-                  borderRadius: "6px",
-                  fontSize: "14px",
-                  fontFamily: "inherit",
-                  transition: "border-color 0.15s",
-                }}
-                onFocus={(e) => (e.target.style.borderColor = "#1f6feb")}
-                onBlur={(e) => (e.target.style.borderColor = "#d0d7de")}
-              />
-            </div>
-            <div
-              style={{ fontSize: "11px", color: "#57606a", marginTop: "4px" }}
-            >
-              Optional — for auto-sync from Slack messages
-            </div>
-          </div>
-        </div>
-        <div
-          className="popover-actions"
-          style={{
-            marginTop: "18px",
-            paddingTop: "14px",
-            borderTop: "1px solid #e5e5e5",
-          }}
-        >
-          <span className="popover-hint">⌘/Ctrl+Enter to save</span>
-          <button className="btn secondary" id="house-popover-cancel">
-            Cancel
-          </button>
-          <button className="btn" id="house-popover-save">
-            Add House
-          </button>
-        </div>
-      </div>
-      <Script
-        id="supabase-config"
-        strategy="beforeInteractive"
-        dangerouslySetInnerHTML={{
-          __html: `window.__SUPABASE_URL="${process.env.NEXT_PUBLIC_SUPABASE_URL}";window.__SUPABASE_ANON_KEY="${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}";`,
-        }}
-      />
-      <div className="mobile-menu-backdrop" id="mobile-menu-backdrop"></div>
-      <div className="mobile-menu" id="mobile-menu">
-        <div className="mobile-menu-header">
-          <div className="mobile-menu-title">Menu</div>
-          <button className="mobile-menu-close" id="mobile-menu-close">
-            ×
-          </button>
-        </div>
-        <div className="mobile-menu-section">
-          <div className="mobile-menu-section-title">Actions</div>
-          <button className="mobile-menu-item" id="mobile-sync-slack">
-            <span>🔄</span>
-            <span>Sync from Slack</span>
-          </button>
-          <button className="mobile-menu-item" id="mobile-add-house">
-            <span>+</span>
-            <span>Add House</span>
-          </button>
-        </div>
-        <div className="mobile-menu-section" id="mobile-costs-section">
-          <div className="mobile-menu-section-title">House Costs</div>
-          <div id="mobile-costs-list"></div>
-        </div>
-        <div
-          className="mobile-menu-section"
-          style={{
-            marginTop: "auto",
-            borderTop: "2px solid #e5e5e5",
-            borderBottom: "none",
-          }}
-        >
+
+          {error && <div style={styles.error}>{error}</div>}
+
           <button
-            className="mobile-menu-item"
-            id="mobile-logout"
-            style={{ color: "#cf222e" }}
+            type="submit"
+            disabled={loading}
+            style={loading ? styles.buttonDisabled : styles.button}
           >
-            <span>🚪</span>
-            <span>Logout</span>
+            {loading ? "Signing in..." : "Sign In"}
           </button>
+        </form>
+
+        <div style={styles.footer}>
+          <p style={styles.footerText}>Contact your administrator for access</p>
         </div>
       </div>
-      <Script src="/supabase-bridge.js" strategy="afterInteractive" />
-      <Script src="/app-logic.js" strategy="afterInteractive" />
-      <div style={styles.footer}>
-        <a href="/privacy" style={styles.link}>
-          Privacy
-        </a>
-        <span style={styles.separator}>•</span>
-        <a href="/tos" style={styles.link}>
-          Terms
-        </a>
-      </div>
-    </>
+    </div>
   );
 }
 
 const styles = {
+  container: {
+    minHeight: "100vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    background: "#fafafa",
+    padding: "20px",
+  },
+  card: {
+    background: "#ffffff",
+    borderRadius: "12px",
+    boxShadow: "0 4px 24px rgba(0, 0, 0, 0.08)",
+    padding: "48px",
+    width: "100%",
+    maxWidth: "420px",
+  },
+  brand: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    marginBottom: "32px",
+    justifyContent: "center",
+  },
+  brandIcon: {
+    width: "40px",
+    height: "32px",
+  },
+  brandText: {
+    fontFamily: "Georgia, Times New Roman, serif",
+    fontSize: "18px",
+    letterSpacing: "0.18em",
+    color: "#1a1a1a",
+    fontWeight: "400",
+  },
+  title: {
+    fontSize: "28px",
+    fontWeight: "600",
+    color: "#111",
+    margin: "0 0 8px 0",
+    textAlign: "center",
+  },
+  subtitle: {
+    fontSize: "14px",
+    color: "#57606a",
+    textAlign: "center",
+    margin: "0 0 32px 0",
+  },
+  form: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "20px",
+  },
+  formGroup: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+  },
+  label: {
+    fontSize: "13px",
+    fontWeight: "500",
+    color: "#24292f",
+  },
+  input: {
+    padding: "10px 12px",
+    border: "1px solid #d0d7de",
+    borderRadius: "6px",
+    fontSize: "14px",
+    fontFamily: "inherit",
+    outline: "none",
+    transition: "border-color 0.15s",
+  },
+  error: {
+    padding: "12px",
+    background: "#ffebe9",
+    border: "1px solid #ff8182",
+    borderRadius: "6px",
+    color: "#82071e",
+    fontSize: "13px",
+  },
+  button: {
+    padding: "12px",
+    background: "#1f6feb",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: "6px",
+    fontSize: "14px",
+    fontWeight: "500",
+    cursor: "pointer",
+    transition: "background 0.15s",
+  },
+  buttonDisabled: {
+    padding: "12px",
+    background: "#8c959f",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: "6px",
+    fontSize: "14px",
+    fontWeight: "500",
+    cursor: "not-allowed",
+  },
   footer: {
-    position: "fixed",
-    bottom: "8px",
-    right: "12px",
-    fontSize: "10px",
-    color: "#ccc",
-    zIndex: 1,
+    marginTop: "24px",
+    textAlign: "center",
+  },
+  footerText: {
+    fontSize: "13px",
+    color: "#57606a",
+    margin: "0",
   },
   link: {
-    color: "#ccc",
+    color: "#1f6feb",
     textDecoration: "none",
-    transition: "color 0.2s",
-  },
-  separator: {
-    margin: "0 4px",
-    color: "#ccc",
   },
 };
