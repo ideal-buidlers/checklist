@@ -1516,19 +1516,6 @@ document
   .getElementById("sync-slack-btn")
   .addEventListener("click", () => syncFromSlack({ silent: false }));
 
-// Auto-sync on open
-(async () => {
-  const hasChannels = Object.keys(state.slackChannels).some(
-    (k) => state.slackChannels[k],
-  );
-  if (!hasChannels) {
-    setAutoSyncStatus("Auto-sync ready — add channel names to enable");
-    return;
-  }
-  setAutoSyncStatus("Auto-syncing on open…");
-  await syncFromSlack({ silent: true });
-})();
-
 // ========== Drive integration ==========
 let driveCache = {}; // hIdx -> { loading, files: [], error, queryDesc }
 
