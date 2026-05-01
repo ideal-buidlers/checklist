@@ -838,8 +838,13 @@ function renderChecklist() {
         const source = state.checkSource[k] || "manual";
         const fromSlack = !!status && source === "slack";
         const ev = state.slackEvidence[k];
-        const cellTitle =
-          fromSlack && ev ? `From Slack #${ev.channel}: "${ev.text}"` : "";
+        let cellTitle = "";
+        if (fromSlack && ev) {
+          const confidenceText = ev.confidence
+            ? ` (AI confidence: ${Math.round(ev.confidence * 100)}%)`
+            : "";
+          cellTitle = `From Slack #${ev.channel}: "${ev.text}"${confidenceText}`;
+        }
         html += `<td class="check-cell ${hasNote ? "has-note" : ""} ${fromSlack ? "from-slack" : ""}" data-key="${k}" title="${escapeHtml(cellTitle)}">
           <div class="cell-inner">
             <button class="status-btn status-${status || "none"}" data-key="${k}" data-h="${hIdx}" data-s="${sIdx}" data-i="${iIdx}" title="Set status">${statusLabel(status)}</button>
@@ -1445,21 +1450,32 @@ async function syncFromSlack(opts = { silent: false }) {
     if (fnResult.errors) errors.push(...fnResult.errors);
 
     for (const match of fnResult.results || []) {
-      const { hIdx, sIdx, iIdx, channel, text, author, ts } = match;
+      const {
+        hIdx,
+        sIdx,
+        iIdx,
+        channel,
+        text,
+        author,
+        ts,
+        confidence,
+        status,
+      } = match;
       const k = `${hIdx}|${sIdx}|${iIdx}`;
       if (state.status[k]) continue;
-      state.status[k] = "done";
+      state.status[k] = status;
       state.checkSource[k] = "slack";
-      state.slackEvidence[k] = { channel, text, author, ts };
+      state.slackEvidence[k] = { channel, text, author, ts, confidence };
       if (window.__db)
         window.__db.persistStatus(
           hIdx,
           sIdx,
           iIdx,
-          "done",
+          status,
           "slack",
           state.slackEvidence[k],
           state.notes[k],
+          confidence,
         );
       totalNew++;
     }
@@ -1480,7 +1496,7 @@ async function syncFromSlack(opts = { silent: false }) {
         ? `  (${errors.length} issue${errors.length === 1 ? "" : "s"}: ${errors.join("; ")})`
         : "";
       showBanner(
-        `Synced from Slack: ${totalNew} item${totalNew === 1 ? "" : "s"} auto-checked in amber. Click each to confirm.${errSuffix}`,
+        `Synced from Slack: ${totalNew} item${totalNew === 1 ? "" : "s"} auto-marked. Click each to confirm.${errSuffix}`,
         "success",
       );
     } else if (!opts.silent) {

@@ -285,6 +285,7 @@
     source,
     slackEvidence,
     note,
+    aiConfidence,
   ) {
     const houseId = getHouseId(hIdx);
     const itemId = getItemId(sIdx, iIdx);
@@ -300,6 +301,7 @@
           source: source || null,
           slack_evidence: slackEvidence ? JSON.stringify(slackEvidence) : null,
           note: note || null,
+          ai_confidence: aiConfidence || null,
           updated_at: new Date().toISOString(),
         },
         "house_id,item_id",

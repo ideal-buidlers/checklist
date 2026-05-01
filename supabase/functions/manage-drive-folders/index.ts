@@ -54,7 +54,7 @@ async function getAccessToken(supabase: any): Promise<string> {
     .update({
       access_token: newTokens.access_token,
       expires_at: new Date(
-        Date.now() + newTokens.expires_in * 1000
+        Date.now() + newTokens.expires_in * 1000,
       ).toISOString(),
     })
     .eq("id", 1);
@@ -65,7 +65,7 @@ async function getAccessToken(supabase: any): Promise<string> {
 async function findFolderByName(
   accessToken: string,
   folderName: string,
-  parentId?: string
+  parentId?: string,
 ): Promise<string | null> {
   let query = `name='${folderName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
   if (parentId) {
@@ -78,7 +78,7 @@ async function findFolderByName(
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-    }
+    },
   );
 
   const data = await response.json();
@@ -88,7 +88,7 @@ async function findFolderByName(
 async function createFolder(
   accessToken: string,
   folderName: string,
-  parentId?: string
+  parentId?: string,
 ): Promise<string> {
   const metadata: any = {
     name: folderName,
@@ -108,16 +108,14 @@ async function createFolder(
         "Content-Type": "application/json",
       },
       body: JSON.stringify(metadata),
-    }
+    },
   );
 
   const data = await response.json();
   return data.id;
 }
 
-async function initializeChecklistFolder(
-  accessToken: string
-): Promise<string> {
+async function initializeChecklistFolder(accessToken: string): Promise<string> {
   // Check if Checklist folder exists
   let folderId = await findFolderByName(accessToken, "Checklist");
 
@@ -132,13 +130,13 @@ async function initializeChecklistFolder(
 async function createHouseFolder(
   accessToken: string,
   houseName: string,
-  checklistFolderId: string
+  checklistFolderId: string,
 ): Promise<string> {
   // Check if house folder already exists
   let folderId = await findFolderByName(
     accessToken,
     houseName,
-    checklistFolderId
+    checklistFolderId,
   );
 
   // Create if doesn't exist
@@ -151,7 +149,7 @@ async function createHouseFolder(
 
 async function listFilesInFolder(
   accessToken: string,
-  folderId: string
+  folderId: string,
 ): Promise<any[]> {
   const response = await fetch(
     `https://www.googleapis.com/drive/v3/files?q='${folderId}' in parents and trashed=false&fields=files(id,name,mimeType,size,modifiedTime,webViewLink,thumbnailLink)&orderBy=modifiedTime desc`,
@@ -159,7 +157,7 @@ async function listFilesInFolder(
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-    }
+    },
   );
 
   const data = await response.json();
@@ -171,7 +169,7 @@ async function uploadFile(
   folderId: string,
   fileName: string,
   fileData: string,
-  mimeType: string
+  mimeType: string,
 ): Promise<any> {
   // Decode base64 file data
   const binaryData = Uint8Array.from(atob(fileData), (c) => c.charCodeAt(0));
@@ -209,7 +207,7 @@ async function uploadFile(
         "Content-Type": `multipart/related; boundary=${boundary}`,
       },
       body: multipartRequestBody,
-    }
+    },
   );
 
   return await response.json();
@@ -217,7 +215,7 @@ async function uploadFile(
 
 async function deleteFolder(
   accessToken: string,
-  folderId: string
+  folderId: string,
 ): Promise<void> {
   await fetch(`https://www.googleapis.com/drive/v3/files/${folderId}`, {
     method: "DELETE",
@@ -233,14 +231,26 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
+    // Use service role key for database operations
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      throw new Error("Missing Supabase credentials");
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const accessToken = await getAccessToken(supabase);
-    const { action, houseName, houseId, folderId, fileName, fileData, mimeType } =
-      await req.json();
+    const {
+      action,
+      houseName,
+      houseId,
+      folderId,
+      fileName,
+      fileData,
+      mimeType,
+    } = await req.json();
 
     let result;
 
@@ -258,18 +268,37 @@ Deno.serve(async (req: Request) => {
         const houseFolderId = await createHouseFolder(
           accessToken,
           houseName,
-          rootFolderId
+          rootFolderId,
         );
 
         // Store in database
         if (houseId) {
-          await supabase.from("house_drive_folders").upsert(
-            {
+          // First try to insert
+          const { error: insertError } = await supabase
+            .from("house_drive_folders")
+            .insert({
               house_id: houseId,
               drive_folder_id: houseFolderId,
-            },
-            { onConflict: "house_id" }
-          );
+            });
+
+          // If it already exists, update it
+          if (insertError && insertError.code === "23505") {
+            const { error: updateError } = await supabase
+              .from("house_drive_folders")
+              .update({ drive_folder_id: houseFolderId })
+              .eq("house_id", houseId);
+            if (updateError) {
+              console.error("Update error:", updateError);
+              throw new Error(
+                `Failed to update folder ID: ${updateError.message}`,
+              );
+            }
+          } else if (insertError) {
+            console.error("Insert error:", insertError);
+            throw new Error(
+              `Failed to store folder ID: ${insertError.message}`,
+            );
+          }
         }
 
         result = { houseFolderId };
@@ -286,7 +315,7 @@ Deno.serve(async (req: Request) => {
       case "upload-file":
         if (!folderId || !fileName || !fileData || !mimeType) {
           throw new Error(
-            "folderId, fileName, fileData, and mimeType are required"
+            "folderId, fileName, fileData, and mimeType are required",
           );
         }
         const uploadedFile = await uploadFile(
@@ -294,7 +323,7 @@ Deno.serve(async (req: Request) => {
           folderId,
           fileName,
           fileData,
-          mimeType
+          mimeType,
         );
         result = { file: uploadedFile };
         break;
@@ -325,12 +354,9 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error) {
     console.error("Error:", error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
