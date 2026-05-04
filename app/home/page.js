@@ -231,13 +231,6 @@ export default function Home() {
           </button>
         </div>
       </div>
-      <Script
-        id="supabase-config"
-        strategy="beforeInteractive"
-        dangerouslySetInnerHTML={{
-          __html: `console.log("[BUILD] Injecting Supabase config:", "${process.env.NEXT_PUBLIC_SUPABASE_URL}");window.__SUPABASE_URL="${process.env.NEXT_PUBLIC_SUPABASE_URL}";window.__SUPABASE_ANON_KEY="${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}";`,
-        }}
-      />
       <div className="mobile-menu-backdrop" id="mobile-menu-backdrop"></div>
       <div className="mobile-menu" id="mobile-menu">
         <div className="mobile-menu-header">
