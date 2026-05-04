@@ -27,6 +27,142 @@ function iconForMime(mime) {
   return ICON_GENERIC;
 }
 
+// ── Google Drive Integration ────────────────────────────────────────────
+
+// Get Supabase credentials (same as supabase-bridge.js)
+const SUPABASE_URL =
+  window.__SUPABASE_URL || "https://yywbjhegbxowhzkrazzj.supabase.co";
+const SUPABASE_ANON_KEY =
+  window.__SUPABASE_ANON_KEY ||
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5d2JqaGVnYnhvd2h6a3JhenpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NjQ5NDAsImV4cCI6MjA5MzA0MDk0MH0.sUME9IqlISueFNon_-udF2tLSoQpIH2cVpjXsbPYayM";
+const DRIVE_FUNCTION_URL = `${SUPABASE_URL}/functions/v1/manage-drive-folders`;
+
+async function callDriveFunction(action, params = {}) {
+  const response = await fetch(DRIVE_FUNCTION_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({ action, ...params }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || "Drive operation failed");
+  }
+
+  return await response.json();
+}
+
+async function createDriveFolderForHouse(houseName, houseId) {
+  try {
+    console.log(`Creating Drive folder for house: ${houseName}`);
+    const result = await callDriveFunction("create-house-folder", {
+      houseName,
+      houseId,
+    });
+    console.log("Drive folder created:", result);
+    return result;
+  } catch (err) {
+    // Silently fail if no token - folder creation is optional
+    if (err.message && err.message.includes("No Google tokens found")) {
+      console.log("Google token not available yet, skipping folder creation");
+      return null;
+    }
+    throw err;
+  }
+}
+
+async function listDriveFiles(folderId) {
+  const result = await callDriveFunction("list-files", { folderId });
+  return result.files || [];
+}
+
+async function uploadFileToDrive(folderId, file) {
+  // Convert file to base64
+  const base64 = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result.split(",")[1];
+      resolve(base64);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+  const result = await callDriveFunction("upload-file", {
+    folderId,
+    fileName: file.name,
+    fileData: base64,
+    mimeType: file.type || "application/octet-stream",
+  });
+  return result.file;
+}
+
+function formatFileSize(bytes) {
+  if (!bytes) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
+}
+
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function uploadFileToHouse(hIdx) {
+  const input = document.getElementById(`file-input-${hIdx}`);
+  if (input) {
+    input.click();
+  }
+}
+
+async function handleFileUpload(hIdx, input) {
+  const file = input.files?.[0];
+  if (!file) return;
+
+  try {
+    showBanner("Uploading file...", "info");
+
+    // Get house ID and folder ID
+    const houseId = state.houseIds?.[hIdx];
+    if (!houseId) {
+      throw new Error("House not found");
+    }
+
+    const folderData = await window.__db?.getHouseDriveFolder(houseId);
+    if (!folderData || !folderData.drive_folder_id) {
+      throw new Error(
+        "Drive folder not found. Please try creating the house again.",
+      );
+    }
+
+    // Upload file
+    await uploadFileToDrive(folderData.drive_folder_id, file);
+
+    // Refresh file list
+    delete driveCache[hIdx];
+    await loadDriveFilesForHouse(hIdx);
+
+    showBanner(`File "${file.name}" uploaded successfully!`, "success");
+  } catch (err) {
+    console.error("Upload failed:", err);
+    showBanner(`Upload failed: ${err.message}`, "error");
+  }
+
+  // Clear input
+  input.value = "";
+}
+
+// ────────────────────────────────────────────────────────────────────────
+
 const DEFAULT_SECTIONS = [
   {
     name: "Pre-Work / Permits",
@@ -702,8 +838,13 @@ function renderChecklist() {
         const source = state.checkSource[k] || "manual";
         const fromSlack = !!status && source === "slack";
         const ev = state.slackEvidence[k];
-        const cellTitle =
-          fromSlack && ev ? `From Slack #${ev.channel}: "${ev.text}"` : "";
+        let cellTitle = "";
+        if (fromSlack && ev) {
+          const confidenceText = ev.confidence
+            ? ` (AI confidence: ${Math.round(ev.confidence * 100)}%)`
+            : "";
+          cellTitle = `From Slack #${ev.channel}: "${ev.text}"${confidenceText}`;
+        }
         html += `<td class="check-cell ${hasNote ? "has-note" : ""} ${fromSlack ? "from-slack" : ""}" data-key="${k}" title="${escapeHtml(cellTitle)}">
           <div class="cell-inner">
             <button class="status-btn status-${status || "none"}" data-key="${k}" data-h="${hIdx}" data-s="${sIdx}" data-i="${iIdx}" title="Set status">${statusLabel(status)}</button>
@@ -1106,6 +1247,14 @@ async function saveHousePopover() {
           slack_channel: slackChannel,
         });
       }
+
+      // Create Google Drive folder (async, don't block on failure)
+      if (newHouse && newHouse.id) {
+        createDriveFolderForHouse(name, newHouse.id).catch((err) => {
+          console.error("Failed to create Drive folder:", err);
+          // Don't show error to user - folder creation is optional
+        });
+      }
     } catch (err) {
       console.error("Error adding house to database:", err);
       showBanner("Failed to add house to database: " + err.message, "error");
@@ -1300,21 +1449,32 @@ async function syncFromSlack(opts = { silent: false }) {
     if (fnResult.errors) errors.push(...fnResult.errors);
 
     for (const match of fnResult.results || []) {
-      const { hIdx, sIdx, iIdx, channel, text, author, ts } = match;
+      const {
+        hIdx,
+        sIdx,
+        iIdx,
+        channel,
+        text,
+        author,
+        ts,
+        confidence,
+        status,
+      } = match;
       const k = `${hIdx}|${sIdx}|${iIdx}`;
       if (state.status[k]) continue;
-      state.status[k] = "done";
+      state.status[k] = status;
       state.checkSource[k] = "slack";
-      state.slackEvidence[k] = { channel, text, author, ts };
+      state.slackEvidence[k] = { channel, text, author, ts, confidence };
       if (window.__db)
         window.__db.persistStatus(
           hIdx,
           sIdx,
           iIdx,
-          "done",
+          status,
           "slack",
           state.slackEvidence[k],
           state.notes[k],
+          confidence,
         );
       totalNew++;
     }
@@ -1335,7 +1495,7 @@ async function syncFromSlack(opts = { silent: false }) {
         ? `  (${errors.length} issue${errors.length === 1 ? "" : "s"}: ${errors.join("; ")})`
         : "";
       showBanner(
-        `Synced from Slack: ${totalNew} item${totalNew === 1 ? "" : "s"} auto-checked in amber. Click each to confirm.${errSuffix}`,
+        `Synced from Slack: ${totalNew} item${totalNew === 1 ? "" : "s"} auto-marked. Click each to confirm.${errSuffix}`,
         "success",
       );
     } else if (!opts.silent) {
@@ -1354,19 +1514,6 @@ async function syncFromSlack(opts = { silent: false }) {
 document
   .getElementById("sync-slack-btn")
   .addEventListener("click", () => syncFromSlack({ silent: false }));
-
-// Auto-sync on open
-(async () => {
-  const hasChannels = Object.keys(state.slackChannels).some(
-    (k) => state.slackChannels[k],
-  );
-  if (!hasChannels) {
-    setAutoSyncStatus("Auto-sync ready — add channel names to enable");
-    return;
-  }
-  setAutoSyncStatus("Auto-syncing on open…");
-  await syncFromSlack({ silent: true });
-})();
 
 // ========== Drive integration ==========
 let driveCache = {}; // hIdx -> { loading, files: [], error, queryDesc }
@@ -1409,8 +1556,74 @@ async function loadDriveDocsForHouse(hIdx) {
   renderSummary();
 }
 
-function loadAllDriveDocs() {
-  state.houses.forEach((_, hIdx) => loadDriveDocsForHouse(hIdx));
+async function loadAllDriveDocs() {
+  for (let hIdx = 0; hIdx < state.houses.length; hIdx++) {
+    await loadDriveFilesForHouse(hIdx);
+  }
+}
+
+async function loadDriveFilesForHouse(hIdx) {
+  if (driveCache[hIdx] && !driveCache[hIdx].loading) return;
+
+  driveCache[hIdx] = { loading: true, files: [] };
+  renderSummary();
+
+  try {
+    // Get house ID from database
+    const houseId = state.houseIds?.[hIdx];
+    if (!houseId) {
+      driveCache[hIdx] = {
+        loading: false,
+        files: [],
+        error: "House not found in database",
+      };
+      renderSummary();
+      return;
+    }
+
+    // Get folder ID from database
+    let folderData = await window.__db?.getHouseDriveFolder(houseId);
+
+    // If no folder exists, try to create it
+    if (!folderData || !folderData.drive_folder_id) {
+      try {
+        const houseName = state.houses[hIdx];
+        console.log(`Creating Drive folder for house: ${houseName}`);
+        await createDriveFolderForHouse(houseName, houseId);
+        // Wait a moment for database to sync, then fetch the newly created folder data
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        folderData = await window.__db?.getHouseDriveFolder(houseId);
+        console.log("Folder data after creation:", folderData);
+      } catch (err) {
+        console.error("Failed to create Drive folder:", err);
+        // If creation fails (e.g., no token), just show empty state
+        driveCache[hIdx] = { loading: false, files: [], error: null };
+        renderSummary();
+        return;
+      }
+    }
+
+    // If still no folder, show empty state
+    if (!folderData || !folderData.drive_folder_id) {
+      driveCache[hIdx] = { loading: false, files: [], error: null };
+      renderSummary();
+      return;
+    }
+
+    // List files in folder
+    const files = await listDriveFiles(folderData.drive_folder_id);
+    driveCache[hIdx] = { loading: false, files, error: null };
+  } catch (err) {
+    console.error("Failed to load Drive files:", err);
+    // Check if error is due to missing token
+    if (err.message && err.message.includes("No Google tokens found")) {
+      driveCache[hIdx] = { loading: false, files: [], error: null };
+    } else {
+      driveCache[hIdx] = { loading: false, files: [], error: err.message };
+    }
+  }
+
+  renderSummary();
 }
 
 function changeDriveSearchToken(hIdx) {
@@ -1547,68 +1760,40 @@ function renderSummary() {
 
     // Drive documents section
     const drive = driveCache[hIdx];
-    const queryDesc = drive?.queryDesc || describeDriveQuery(hIdx);
-    const excludedMap = state.driveExcludedFiles[hIdx] || {};
-    const excludedIds = Object.keys(excludedMap);
-    const excludedCount = excludedIds.length;
-    const isCustomQuery = !!(
-      state.driveSearchTokens[hIdx] && state.driveSearchTokens[hIdx].trim()
-    );
     html += `<div class="drive-section">
       <h4>
-        <span>Drive Documents <span class="drive-search-token">(${isCustomQuery ? "custom: " : "requires "}${escapeHtml(queryDesc)})</span></span>
-        <span class="drive-search-edit" onclick="changeDriveSearchToken(${hIdx})">Edit search</span>
+        <span>Drive Documents</span>
+        <button class="btn-upload-file" onclick="uploadFileToHouse(${hIdx})" style="font-size: 12px; padding: 4px 8px; margin-left: 8px;">+ Upload</button>
       </h4>`;
     if (!drive) {
       html += `<div class="drive-loading">Loading…</div>`;
     } else if (drive.loading) {
-      html += `<div class="drive-loading">Searching Drive…</div>`;
+      html += `<div class="drive-loading">Loading files…</div>`;
     } else if (drive.error) {
       html += `<div class="drive-error">${escapeHtml(drive.error)}</div>`;
     } else if (drive.files.length === 0) {
-      html += `<div class="drive-empty">No documents found.</div>`;
+      html += `<div class="drive-empty">No files yet. Click Upload to add files.</div>`;
     } else {
-      html += `<ul class="drive-list">`;
+      html += `<div class="drive-grid">`;
       drive.files.forEach((f) => {
         const icon = iconForMime(f.mimeType);
-        const url =
-          f.viewUrl ||
-          (f.id ? `https://drive.google.com/open?id=${f.id}` : "#");
+        const url = f.webViewLink || "#";
         const date = formatDate(f.modifiedTime);
-        const safeId = escapeHtml(f.id || "");
-        html += `<li>
-          <div class="drive-row-main">
-            <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${icon}<span>${escapeHtml(f.title || "Untitled")}</span></a>
-            ${date ? `<div class="drive-meta">Modified ${date}</div>` : ""}
-          </div>
-          <button class="drive-exclude-btn" title="Exclude this document — won't appear here again" onclick="excludeDriveFile(${hIdx}, '${safeId}')">×</button>
-        </li>`;
-      });
-      html += `</ul>`;
-    }
-
-    // Excluded section
-    if (excludedCount > 0) {
-      const expanded = !!driveExpandedExclusions[hIdx];
-      html += `<div class="drive-excluded-section">
-        <div class="drive-excluded-title">
-          <span>${excludedCount} excluded</span>
-          <span class="drive-excluded-toggle" onclick="toggleExcludedSection(${hIdx})">${expanded ? "Hide" : "Show"}</span>
+        const size = formatFileSize(f.size);
+        html += `<div class="drive-card">
+          <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="drive-card-link">
+            <div class="drive-card-icon">${icon}</div>
+            <div class="drive-card-info">
+              <div class="drive-card-name" title="${escapeHtml(f.name || "Untitled")}">${escapeHtml(f.name || "Untitled")}</div>
+              <div class="drive-card-meta">${size} · ${date}</div>
+            </div>
+          </a>
         </div>`;
-      if (expanded) {
-        html += `<ul class="drive-excluded-list">`;
-        excludedIds.forEach((fid) => {
-          const meta = excludedMap[fid];
-          html += `<li>
-            <span class="drive-excluded-name" title="${escapeHtml(meta.title || "")}">${escapeHtml(meta.title || "Untitled")}</span>
-            <button class="drive-restore-btn" onclick="restoreDriveFile(${hIdx}, '${escapeHtml(fid)}')">Restore</button>
-          </li>`;
-        });
-        html += `</ul>`;
-      }
+      });
       html += `</div>`;
     }
     html += `</div>`;
+    html += `<input type="file" id="file-input-${hIdx}" style="display: none;" onchange="handleFileUpload(${hIdx}, this)">`;
 
     html += `</div>`;
   });

@@ -1,101 +1,105 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
 const SLACK_TOKEN = Deno.env.get("SLACK_BOT_TOKEN") ?? "";
+const CLAUDE_API_KEY = Deno.env.get("CLAUDE_API_KEY") ?? "";
 
-const STOP_WORDS = new Set([
-  "the",
-  "and",
-  "for",
-  "are",
-  "but",
-  "not",
-  "you",
-  "all",
-  "can",
-  "her",
-  "was",
-  "one",
-  "our",
-  "out",
-  "day",
-  "get",
-  "has",
-  "him",
-  "his",
-  "how",
-  "its",
-  "now",
-  "did",
-  "let",
-  "put",
-  "say",
-  "she",
-  "too",
-  "use",
-  "will",
-  "with",
-  "from",
-  "have",
-  "this",
-  "that",
-  "they",
-  "been",
-  "when",
-  "were",
-  "your",
-  "what",
-  "there",
-  "their",
-  "than",
-  "then",
-  "some",
-  "also",
-  "into",
-  "just",
-  "like",
-  "more",
-  "over",
-  "such",
-  "time",
-  "very",
-  "even",
-  "most",
-  "each",
-  "much",
-  "call",
-  "come",
-  "back",
-  "down",
-  "here",
-  "made",
-  "make",
-  "only",
-  "same",
-  "take",
-  "than",
-  "well",
-  "went",
-]);
-
-const FUTURE_RE =
-  /\b(will|gonna|going to|need to|needs to|should|would|planning|plan to|hope to|trying|waiting)\b/i;
-const QUESTION_RE = /\?/;
-
-function tokenize(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((w) => w.length >= 4 && !STOP_WORDS.has(w));
+interface ClaudeMatch {
+  item: string;
+  message: string;
+  confidence: number;
+  status: "done" | "ordered" | "called";
+  reasoning?: string;
 }
 
-function scoreMatch(itemTokens: string[], msgText: string): number {
-  const msgLower = msgText.toLowerCase();
-  let hits = 0;
-  for (const t of itemTokens) {
-    if (msgLower.includes(t)) hits++;
+async function analyzeWithClaude(
+  items: Array<{ sIdx: number; iIdx: number; text: string }>,
+  messages: Array<{ text: string; author: string; ts: string }>,
+): Promise<ClaudeMatch[]> {
+  const itemsList = items
+    .map((item, idx) => `${idx + 1}. ${item.text}`)
+    .join("\n");
+  const messagesList = messages
+    .map((msg, idx) => `[${idx + 1}] ${msg.author}: ${msg.text}`)
+    .join("\n");
+
+  const prompt = `You are analyzing Slack messages from a construction project to identify task progress.
+
+UNCHECKED ITEMS:
+${itemsList}
+
+RECENT MESSAGES:
+${messagesList}
+
+Identify which items have progress updates and determine the appropriate status:
+
+STATUS DEFINITIONS:
+- "done": Task is completed/finished (e.g., "done", "finished", "completed", "installed", "approved")
+- "ordered": Task has been scheduled/ordered (e.g., "scheduled for Monday", "ordered", "booked", "appointment set")
+- "called": Task is in planning/coordination phase (e.g., "called them", "reached out", "waiting for quote", "in discussion")
+
+IGNORE:
+- Future plans without action ("will do", "planning to", "need to")
+- Questions without answers
+- Negative statements ("not done", "waiting on", "haven't called")
+
+Return ONLY a JSON array of matches with this exact format:
+[
+  {
+    "item": "exact item text from list",
+    "message": "the message text that indicates progress",
+    "status": "done",
+    "confidence": 0.95
   }
-  return hits;
+]
+
+Confidence scoring:
+- 0.9-1.0: Explicit statement
+- 0.75-0.89: Strong implicit indication
+- 0.6-0.74: Likely but ambiguous
+- Below 0.6: Don't include
+
+Return empty array [] if no matches found.`;
+
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": CLAUDE_API_KEY,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-3-5-haiku-20241022",
+      max_tokens: 1024,
+      messages: [
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Claude API error: ${response.status} ${errorText}`);
+  }
+
+  const data = await response.json();
+  const content = data.content[0].text;
+
+  // Extract JSON from response (handle markdown code blocks)
+  let jsonText = content.trim();
+  if (jsonText.startsWith("```")) {
+    jsonText = jsonText.replace(/```json?\n?/g, "").replace(/```\n?$/g, "");
+  }
+
+  try {
+    const matches = JSON.parse(jsonText);
+    return Array.isArray(matches) ? matches : [];
+  } catch (e) {
+    console.error("Failed to parse Claude response:", content);
+    return [];
+  }
 }
 
 async function slackGet(path: string, params: Record<string, string> = {}) {
@@ -197,6 +201,8 @@ Deno.serve(async (req: Request) => {
     text: string;
     author: string;
     ts: string;
+    confidence: number;
+    status: string;
   }> = [];
   const errors: string[] = [];
 
@@ -211,29 +217,37 @@ Deno.serve(async (req: Request) => {
       const messages = await getMessages(channelId, 50);
       if (messages.length === 0) continue;
 
-      for (const msg of messages) {
-        if (FUTURE_RE.test(msg.text) || QUESTION_RE.test(msg.text)) continue;
-        let bestItem: (typeof items)[0] | null = null;
-        let bestScore = 0;
-        for (const item of items) {
-          const tokens = tokenize(item.text);
-          if (tokens.length === 0) continue;
-          const score = scoreMatch(tokens, msg.text);
-          const threshold = Math.max(2, Math.ceil(tokens.length * 0.4));
-          if (score >= threshold && score > bestScore) {
-            bestScore = score;
-            bestItem = item;
-          }
+      // Use Claude to analyze all messages for this house at once
+      const matches = await analyzeWithClaude(items, messages);
+
+      // Process Claude's matches
+      for (const match of matches) {
+        // Find the item that matches
+        const item = items.find((i) => i.text === match.item);
+        if (!item) {
+          console.warn(`Claude matched unknown item: ${match.item}`);
+          continue;
         }
-        if (bestItem) {
+
+        // Find the message that triggered the match
+        const message = messages.find((m) => m.text === match.message);
+        if (!message) {
+          console.warn(`Claude referenced unknown message: ${match.message}`);
+          continue;
+        }
+
+        // Only include matches with confidence >= 0.75
+        if (match.confidence >= 0.75) {
           results.push({
             hIdx,
-            sIdx: bestItem.sIdx,
-            iIdx: bestItem.iIdx,
+            sIdx: item.sIdx,
+            iIdx: item.iIdx,
             channel,
-            text: msg.text,
-            author: msg.author,
-            ts: msg.ts,
+            text: message.text,
+            author: message.author,
+            ts: message.ts,
+            confidence: match.confidence,
+            status: match.status,
           });
         }
       }

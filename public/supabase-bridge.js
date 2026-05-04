@@ -246,6 +246,7 @@
 
     return {
       houses: houseNames,
+      houseIds: houseIds,
       sections: sections.map((s) => ({ name: s.name, items: [...s.items] })),
       status: statusMap,
       notes: notesMap,
@@ -285,6 +286,7 @@
     source,
     slackEvidence,
     note,
+    aiConfidence,
   ) {
     const houseId = getHouseId(hIdx);
     const itemId = getItemId(sIdx, iIdx);
@@ -300,6 +302,7 @@
           source: source || null,
           slack_evidence: slackEvidence ? JSON.stringify(slackEvidence) : null,
           note: note || null,
+          ai_confidence: aiConfidence || null,
           updated_at: new Date().toISOString(),
         },
         "house_id,item_id",
@@ -476,6 +479,18 @@
         if (!res.ok) throw new Error(await res.text());
       } catch (e) {
         console.error("[bridge] removeDriveExclusion", e);
+      }
+    },
+    getHouseDriveFolder: async (houseId) => {
+      try {
+        const data = await query(
+          "house_drive_folders",
+          `house_id=eq.${houseId}`,
+        );
+        return data && data.length > 0 ? data[0] : null;
+      } catch (e) {
+        console.error("[bridge] getHouseDriveFolder", e);
+        return null;
       }
     },
   };

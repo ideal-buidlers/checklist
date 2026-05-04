@@ -29,6 +29,10 @@ export function AuthProvider({ children }) {
     return false;
   };
 
+  const initiateGoogleAuth = () => {
+    window.location.href = "/api/auth/google";
+  };
+
   const signOut = () => {
     setIsAuthenticated(false);
     sessionStorage.removeItem("authenticated");
@@ -36,7 +40,13 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, loading, authenticate, signOut }}
+      value={{
+        isAuthenticated,
+        loading,
+        authenticate,
+        initiateGoogleAuth,
+        signOut,
+      }}
     >
       {children}
     </AuthContext.Provider>
