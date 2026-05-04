@@ -87,9 +87,6 @@ export default function Home() {
             <span className="legend-swatch slack"></span> From Slack — click to
             confirm
           </span>
-          <span className="legend-item">
-            Auto-sync runs every time you open the dashboard.
-          </span>
           <span
             className="legend-item auto-sync-status"
             id="auto-sync-status"

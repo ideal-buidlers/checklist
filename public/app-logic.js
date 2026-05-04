@@ -1750,34 +1750,22 @@ function renderSummary() {
     html += `<div class="house-card">
       <h3>${escapeHtml(house)} <span class="count-badge">${doneCount} / ${totalItems} done · ${noteCount} note${noteCount === 1 ? "" : "s"}</span></h3>
       <div class="progress"><div style="width:${pct}%"></div></div>`;
-    const anyContent = bySection.some((s) => s.rows.length > 0);
-    if (!anyContent) {
-      html += `<div style="font-size:12px; color:#888;">Nothing checked or noted yet.</div>`;
+    const noteSections = bySection.filter((s) => s.rows.some((r) => r.note));
+    if (noteSections.length === 0) {
+      html += `<div style="font-size:12px; color:#888;">No notes yet.</div>`;
     } else {
       html += `<ul class="summary-list">`;
-      bySection.forEach((s) => {
-        if (s.rows.length === 0) return;
+      noteSections.forEach((s) => {
+        const noteRows = s.rows.filter((r) => r.note);
+        if (noteRows.length === 0) return;
         html += `<li class="heading">${escapeHtml(s.section)}</li>`;
-        s.rows.forEach((r) => {
-          const mark =
-            r.status === "done"
-              ? "X"
-              : r.status === "called"
-                ? "C"
-                : r.status === "ordered"
-                  ? "O"
-                  : "○";
-          const badge = "";
+        noteRows.forEach((r) => {
           html += `<li class="item-line">
-            <span class="item-text">${mark} ${escapeHtml(r.item)}</span>${badge}
-            ${
-              r.note
-                ? `<div class="note-display">
+            <span class="item-text">${escapeHtml(r.item)}</span>
+            <div class="note-display">
               ${escapeHtml(r.note)}
               <button class="btn-delete-note" data-key="${r.key}" data-h="${r.hIdx}" data-s="${r.sIdx}" data-i="${r.iIdx}" title="Delete note">×</button>
-            </div>`
-                : ""
-            }
+            </div>
           </li>`;
         });
       });
