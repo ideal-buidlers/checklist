@@ -114,6 +114,13 @@ export default function Home() {
           placeholder="Add a note (e.g., contractor, date, blocker)…"
         ></textarea>
         <div className="popover-actions">
+          <button
+            className="btn danger"
+            id="popover-delete"
+            style={{ marginRight: "auto" }}
+          >
+            Delete
+          </button>
           <span className="popover-hint">⌘/Ctrl+Enter to save</span>
           <button className="btn secondary" id="popover-cancel">
             Cancel

@@ -57,17 +57,14 @@ async function callDriveFunction(action, params = {}) {
 
 async function createDriveFolderForHouse(houseName, houseId) {
   try {
-    console.log(`Creating Drive folder for house: ${houseName}`);
     const result = await callDriveFunction("create-house-folder", {
       houseName,
       houseId,
     });
-    console.log("Drive folder created:", result);
     return result;
   } catch (err) {
     // Silently fail if no token - folder creation is optional
     if (err.message && err.message.includes("No Google tokens found")) {
-      console.log("Google token not available yet, skipping folder creation");
       return null;
     }
     throw err;
@@ -780,7 +777,6 @@ function statusLabel(status) {
 }
 
 function renderChecklist() {
-  console.log("renderChecklist called, state:", state);
   const table = document.getElementById("checklist-table");
   if (!table) {
     console.error("checklist-table element not found!");
@@ -1168,6 +1164,17 @@ function saveNotePopover() {
     window.__db.persistNote(nh, ns, ni, state.notes[activeNoteContext.key]);
   closeNotePopover();
   renderChecklist();
+  renderSummary();
+}
+function deleteNotePopover() {
+  if (!activeNoteContext) return;
+  delete state.notes[activeNoteContext.key];
+  saveState();
+  const [nh, ns, ni] = activeNoteContext.key.split("|").map(Number);
+  if (window.__db) window.__db.persistNote(nh, ns, ni, null);
+  closeNotePopover();
+  renderChecklist();
+  renderSummary();
 }
 document
   .getElementById("popover-cancel")
@@ -1175,6 +1182,9 @@ document
 document
   .getElementById("popover-save")
   .addEventListener("click", saveNotePopover);
+document
+  .getElementById("popover-delete")
+  .addEventListener("click", deleteNotePopover);
 document.getElementById("popover-backdrop").addEventListener("click", (e) => {
   // Close whichever popover is open
   if (document.getElementById("note-popover").classList.contains("open")) {
@@ -1239,8 +1249,6 @@ async function saveHousePopover() {
   if (window.__db) {
     try {
       const newHouse = await window.__db.addHouse(name);
-      console.log("House added to database:", newHouse);
-
       // Update slack channel if provided
       if (slackChannel && newHouse) {
         await window.__db.persistHouseField(hIdx, {
@@ -1390,7 +1398,6 @@ async function syncFromSlack(opts = { silent: false }) {
         channel: state.slackChannels[hIdx],
       }))
       .filter((h) => h.channel);
-    console.log("[syncFromSlack] housesWithChannels:", housesWithChannels);
     if (housesWithChannels.length === 0) {
       if (!opts.silent)
         showBanner(
@@ -1417,7 +1424,6 @@ async function syncFromSlack(opts = { silent: false }) {
     let totalNew = 0;
     const errors = [];
 
-    console.log("[syncFromSlack] payload:", payload);
     if (payload.length === 0) {
       setAutoSyncStatus("");
       if (!opts.silent) showBanner("All items already have a status.", "info");
@@ -1425,25 +1431,13 @@ async function syncFromSlack(opts = { silent: false }) {
     }
 
     const supabaseUrl = window.__SUPABASE_URL;
-    console.log("[syncFromSlack] supabaseUrl:", supabaseUrl);
-    console.log(
-      "[syncFromSlack] window object keys:",
-      Object.keys(window).filter((k) => k.includes("SUPABASE")),
-    );
     if (!supabaseUrl) {
-      console.error(
-        "[syncFromSlack] FATAL: window.__SUPABASE_URL is undefined",
-      );
       throw new Error("Supabase URL not configured");
     }
     const fnUrl = `${supabaseUrl}/functions/v1/slack-sync`;
     const token = window.__SUPABASE_ANON_KEY;
-    console.log("[syncFromSlack] calling function at:", fnUrl);
-    console.log("[syncFromSlack] token exists:", !!token);
-    console.log("[syncFromSlack] payload:", JSON.stringify(payload, null, 2));
     let fnResult;
     try {
-      console.log("[syncFromSlack] about to fetch...");
       const res = await fetch(fnUrl, {
         method: "POST",
         headers: {
@@ -1452,16 +1446,12 @@ async function syncFromSlack(opts = { silent: false }) {
         },
         body: JSON.stringify({ houses: payload }),
       });
-      console.log("[syncFromSlack] fetch completed, status:", res.status);
       if (!res.ok) {
         const errorText = await res.text();
-        console.error("Slack sync error:", res.status, errorText);
         throw new Error(`Edge Function error ${res.status}: ${errorText}`);
       }
       fnResult = await res.json();
-      console.log("[syncFromSlack] response:", fnResult);
     } catch (err) {
-      console.error("[syncFromSlack] caught error:", err);
       throw new Error(`Slack sync failed: ${err.message || err}`);
     }
 
@@ -1618,12 +1608,10 @@ async function loadDriveFilesForHouse(hIdx) {
     if (!folderData || !folderData.drive_folder_id) {
       try {
         const houseName = state.houses[hIdx];
-        console.log(`Creating Drive folder for house: ${houseName}`);
         await createDriveFolderForHouse(houseName, houseId);
         // Wait a moment for database to sync, then fetch the newly created folder data
         await new Promise((resolve) => setTimeout(resolve, 500));
         folderData = await window.__db?.getHouseDriveFolder(houseId);
-        console.log("Folder data after creation:", folderData);
       } catch (err) {
         console.error("Failed to create Drive folder:", err);
         // If creation fails (e.g., no token), just show empty state
@@ -1753,7 +1741,8 @@ function renderSummary() {
         const note = state.notes[k] || "";
         const source = state.checkSource[k] || "manual";
         if (checked) doneCount++;
-        if (note) rows.push({ item, status, checked, note });
+        if (note) noteCount++;
+        rows.push({ item, status, checked, note, key: k, hIdx, sIdx, iIdx });
       });
       return { section: s.name, rows };
     });
@@ -1781,7 +1770,14 @@ function renderSummary() {
           const badge = "";
           html += `<li class="item-line">
             <span class="item-text">${mark} ${escapeHtml(r.item)}</span>${badge}
-            ${r.note ? `<div class="note-display">${escapeHtml(r.note)}</div>` : ""}
+            ${
+              r.note
+                ? `<div class="note-display">
+              ${escapeHtml(r.note)}
+              <button class="btn-delete-note" data-key="${r.key}" data-h="${r.hIdx}" data-s="${r.sIdx}" data-i="${r.iIdx}" title="Delete note">×</button>
+            </div>`
+                : ""
+            }
           </li>`;
         });
       });
@@ -1829,6 +1825,24 @@ function renderSummary() {
   });
   html += `</div>`;
   root.innerHTML = html;
+
+  // Attach event listeners for delete note buttons in summary
+  root.querySelectorAll(".btn-delete-note").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const key = btn.dataset.key;
+      const hIdx = +btn.dataset.h;
+      const sIdx = +btn.dataset.s;
+      const iIdx = +btn.dataset.i;
+      if (confirm("Delete this note?")) {
+        delete state.notes[key];
+        saveState();
+        if (window.__db) window.__db.persistNote(hIdx, sIdx, iIdx, null);
+        renderChecklist();
+        renderSummary();
+      }
+    });
+  });
 }
 
 // ========== Costs view ==========
@@ -2227,14 +2241,10 @@ function waitForDbReady(maxMs = 15000) {
 
 waitForDbReady()
   .then((ready) => {
-    console.log("Database ready:", ready);
     return ready || Promise.resolve();
   })
   .then(() => {
-    console.log("Loading state and rendering...");
-    console.log("window.__dbState:", window.__dbState);
     state = loadState();
-    console.log("State loaded:", state);
 
     // If state is empty, try to use database state
     if (
@@ -2242,7 +2252,6 @@ waitForDbReady()
       state.sections.length === 0 &&
       window.__dbState
     ) {
-      console.log("Using database state as fallback");
       state = {
         houses: window.__dbState.houses || [],
         sections: window.__dbState.sections || [],
@@ -2258,7 +2267,6 @@ waitForDbReady()
         lotCost: window.__dbState.lotCost || {},
         salesPrice: window.__dbState.salesPrice || {},
       };
-      console.log("Updated state from database:", state);
     }
 
     renderTabs();

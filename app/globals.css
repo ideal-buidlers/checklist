@@ -772,6 +772,29 @@ td.check-cell.has-note:not(.from-slack):hover {
   padding: 4px 8px;
   border-radius: 0 4px 4px 0;
   white-space: pre-wrap;
+  position: relative;
+  padding-right: 24px;
+}
+.btn-delete-note {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: none;
+  border: none;
+  color: #735c0f;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: 3px;
+  opacity: 0.6;
+  transition:
+    opacity 0.2s,
+    background 0.2s;
+}
+.btn-delete-note:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.1);
 }
 .slack-evidence {
   display: block;

@@ -176,7 +176,11 @@ async function getMessages(
       text: m.text,
       author: m.user || m.username || "unknown",
       ts: m.ts,
-      files: m.files ? m.files.filter((f) => f.size <= 10485760) : undefined,
+      files: m.files
+        ? m.files.filter(
+            (f) => f.size <= 10485760 && f.name.toLowerCase().includes("final"),
+          )
+        : undefined,
     }));
 }
 
