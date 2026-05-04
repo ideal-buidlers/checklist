@@ -1426,12 +1426,24 @@ async function syncFromSlack(opts = { silent: false }) {
 
     const supabaseUrl = window.__SUPABASE_URL;
     console.log("[syncFromSlack] supabaseUrl:", supabaseUrl);
-    if (!supabaseUrl) throw new Error("Supabase URL not configured");
+    console.log(
+      "[syncFromSlack] window object keys:",
+      Object.keys(window).filter((k) => k.includes("SUPABASE")),
+    );
+    if (!supabaseUrl) {
+      console.error(
+        "[syncFromSlack] FATAL: window.__SUPABASE_URL is undefined",
+      );
+      throw new Error("Supabase URL not configured");
+    }
     const fnUrl = `${supabaseUrl}/functions/v1/slack-sync`;
     const token = window.__SUPABASE_ANON_KEY;
     console.log("[syncFromSlack] calling function at:", fnUrl);
+    console.log("[syncFromSlack] token exists:", !!token);
+    console.log("[syncFromSlack] payload:", JSON.stringify(payload, null, 2));
     let fnResult;
     try {
+      console.log("[syncFromSlack] about to fetch...");
       const res = await fetch(fnUrl, {
         method: "POST",
         headers: {
@@ -1440,13 +1452,16 @@ async function syncFromSlack(opts = { silent: false }) {
         },
         body: JSON.stringify({ houses: payload }),
       });
+      console.log("[syncFromSlack] fetch completed, status:", res.status);
       if (!res.ok) {
         const errorText = await res.text();
         console.error("Slack sync error:", res.status, errorText);
         throw new Error(`Edge Function error ${res.status}: ${errorText}`);
       }
       fnResult = await res.json();
+      console.log("[syncFromSlack] response:", fnResult);
     } catch (err) {
+      console.error("[syncFromSlack] caught error:", err);
       throw new Error(`Slack sync failed: ${err.message || err}`);
     }
 
