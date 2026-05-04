@@ -1476,6 +1476,13 @@ async function syncFromSlack(opts = { silent: false }) {
       state.status[k] = status;
       state.checkSource[k] = "slack";
       state.slackEvidence[k] = { channel, text, author, ts, confidence };
+      // Save the Slack message that triggered the match as a note
+      const slackNote = `[Slack #${channel}] ${text}`;
+      state.notes[k] = state.notes[k]
+        ? `${state.notes[k]}\n${slackNote}`
+        : slackNote;
+      if (window.__db)
+        window.__db.persistNote(hIdx, sIdx, iIdx, state.notes[k]);
       if (window.__db)
         window.__db.persistStatus(
           hIdx,
