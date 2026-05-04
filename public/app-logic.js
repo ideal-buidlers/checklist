@@ -1447,6 +1447,8 @@ async function syncFromSlack(opts = { silent: false }) {
     }
 
     if (fnResult.errors) errors.push(...fnResult.errors);
+    const filesUploaded = fnResult.filesUploaded || 0;
+    const filesSkipped = fnResult.filesSkipped || 0;
 
     for (const match of fnResult.results || []) {
       const {
@@ -1487,15 +1489,24 @@ async function syncFromSlack(opts = { silent: false }) {
     setAutoSyncStatus(
       `Last synced ${now}${totalNew > 0 ? ` · ${totalNew} new` : ""}`,
     );
-    if (totalNew === 0 && errors.length === 0) {
+    if (totalNew === 0 && filesUploaded === 0 && errors.length === 0) {
       if (!opts.silent)
         showBanner("Sync complete — no new items matched.", "info");
-    } else if (totalNew > 0) {
+    } else if (totalNew > 0 || filesUploaded > 0) {
+      const itemsText =
+        totalNew > 0
+          ? `${totalNew} item${totalNew === 1 ? "" : "s"} auto-marked`
+          : "";
+      const filesText =
+        filesUploaded > 0
+          ? `${filesUploaded} file${filesUploaded === 1 ? "" : "s"} uploaded`
+          : "";
+      const separator = itemsText && filesText ? " · " : "";
       const errSuffix = errors.length
         ? `  (${errors.length} issue${errors.length === 1 ? "" : "s"}: ${errors.join("; ")})`
         : "";
       showBanner(
-        `Synced from Slack: ${totalNew} item${totalNew === 1 ? "" : "s"} auto-marked. Click each to confirm.${errSuffix}`,
+        `Synced from Slack: ${itemsText}${separator}${filesText}. Click items to confirm.${errSuffix}`,
         "success",
       );
     } else if (!opts.silent) {

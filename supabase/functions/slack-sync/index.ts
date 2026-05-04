@@ -68,7 +68,7 @@ Return empty array [] if no matches found.`;
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-3-5-haiku-20241022",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 1024,
       messages: [
         {
@@ -137,7 +137,20 @@ async function findChannelId(name: string): Promise<string | null> {
 async function getMessages(
   channelId: string,
   limit = 50,
-): Promise<Array<{ text: string; author: string; ts: string }>> {
+): Promise<
+  Array<{
+    text: string;
+    author: string;
+    ts: string;
+    files?: Array<{
+      id: string;
+      name: string;
+      mimetype: string;
+      url_private_download: string;
+      size: number;
+    }>;
+  }>
+> {
   const data = await slackGet("conversations.history", {
     channel: channelId,
     limit: String(limit),
@@ -149,6 +162,13 @@ async function getMessages(
       username?: string;
       bot_id?: string;
       ts: string;
+      files?: Array<{
+        id: string;
+        name: string;
+        mimetype: string;
+        url_private_download: string;
+        size: number;
+      }>;
     }>
   )
     .filter((m) => m.text && !m.bot_id)
@@ -156,7 +176,129 @@ async function getMessages(
       text: m.text,
       author: m.user || m.username || "unknown",
       ts: m.ts,
+      files: m.files ? m.files.filter((f) => f.size <= 10485760) : undefined,
     }));
+}
+
+async function downloadSlackFile(
+  fileUrl: string,
+  slackToken: string,
+): Promise<string> {
+  const response = await fetch(fileUrl, {
+    headers: { Authorization: `Bearer ${slackToken}` },
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to download Slack file: ${response.status}`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+async function uploadFileToGoogleDrive(
+  accessToken: string,
+  folderId: string,
+  fileName: string,
+  fileData: string,
+  mimeType: string,
+): Promise<string> {
+  const binaryData = Uint8Array.from(atob(fileData), (c) => c.charCodeAt(0));
+  const metadata = {
+    name: fileName,
+    parents: [folderId],
+  };
+
+  const boundary = "-------314159265358979323846";
+  const delimiter = "\r\n--" + boundary + "\r\n";
+  const closeDelim = "\r\n--" + boundary + "--";
+
+  const metadataPart =
+    delimiter +
+    "Content-Type: application/json; charset=UTF-8\r\n\r\n" +
+    JSON.stringify(metadata);
+
+  const dataPart =
+    delimiter +
+    `Content-Type: ${mimeType}\r\n` +
+    "Content-Transfer-Encoding: base64\r\n\r\n" +
+    fileData;
+
+  const multipartRequestBody = metadataPart + dataPart + closeDelim;
+
+  const response = await fetch(
+    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": `multipart/related; boundary=${boundary}`,
+      },
+      body: multipartRequestBody,
+    },
+  );
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Drive upload failed: ${response.status} ${error}`);
+  }
+
+  const result = await response.json();
+  return result.id;
+}
+
+async function checkFileAlreadyUploaded(
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  slackFileId: string,
+): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/slack_file_uploads?slack_file_id=eq.${encodeURIComponent(slackFileId)}&select=id`,
+      {
+        headers: {
+          Authorization: `Bearer ${supabaseServiceKey}`,
+          apikey: supabaseServiceKey,
+        },
+      },
+    );
+    const data = await res.json();
+    return data && data.length > 0;
+  } catch (e) {
+    console.error("Error checking file upload:", e);
+    return false;
+  }
+}
+
+async function recordFileUpload(
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  slackFileId: string,
+  slackChannel: string,
+  driveFileId: string,
+  fileName: string,
+): Promise<void> {
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/slack_file_uploads`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${supabaseServiceKey}`,
+        apikey: supabaseServiceKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        slack_file_id: slackFileId,
+        slack_channel: slackChannel,
+        drive_file_id: driveFileId,
+        file_name: fileName,
+      }),
+    });
+  } catch (e) {
+    console.error("Error recording file upload:", e);
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -205,6 +347,8 @@ Deno.serve(async (req: Request) => {
     status: string;
   }> = [];
   const errors: string[] = [];
+  let filesUploaded = 0;
+  let filesSkipped = 0;
 
   for (const { hIdx, house, channel, items } of body.houses) {
     try {
@@ -251,15 +395,110 @@ Deno.serve(async (req: Request) => {
           });
         }
       }
+
+      // Process file attachments from all messages
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL");
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+        const googleTokens = await (async () => {
+          const res = await fetch(
+            `${supabaseUrl}/rest/v1/google_tokens?select=access_token`,
+            {
+              headers: {
+                Authorization: `Bearer ${supabaseServiceKey}`,
+                apikey: supabaseServiceKey,
+              },
+            },
+          );
+          const data = await res.json();
+          return data[0];
+        })();
+
+        if (!googleTokens?.access_token) {
+          console.log(`Skipping file upload for ${house}: no Google tokens`);
+        } else {
+          for (const message of messages) {
+            if (!message.files || message.files.length === 0) continue;
+
+            for (const file of message.files) {
+              try {
+                const alreadyUploaded = await checkFileAlreadyUploaded(
+                  supabaseUrl,
+                  supabaseServiceKey,
+                  file.id,
+                );
+                if (alreadyUploaded) {
+                  filesSkipped++;
+                  continue;
+                }
+
+                const houseFolderRes = await fetch(
+                  `${supabaseUrl}/rest/v1/house_drive_folders?select=drive_folder_id`,
+                  {
+                    headers: {
+                      Authorization: `Bearer ${supabaseServiceKey}`,
+                      apikey: supabaseServiceKey,
+                    },
+                  },
+                );
+                const houseFolders = await houseFolderRes.json();
+                const houseFolderData = houseFolders[0];
+
+                if (!houseFolderData?.drive_folder_id) {
+                  console.log(
+                    `Skipping file upload for ${house}: no Drive folder`,
+                  );
+                  continue;
+                }
+
+                const fileData = await downloadSlackFile(
+                  file.url_private_download,
+                  SLACK_TOKEN,
+                );
+                const driveFileId = await uploadFileToGoogleDrive(
+                  googleTokens.access_token,
+                  houseFolderData.drive_folder_id,
+                  file.name,
+                  fileData,
+                  file.mimetype,
+                );
+
+                await recordFileUpload(
+                  supabaseUrl,
+                  supabaseServiceKey,
+                  file.id,
+                  channel,
+                  driveFileId,
+                  file.name,
+                );
+
+                filesUploaded++;
+              } catch (fileError) {
+                console.error(
+                  `Failed to upload file ${file.name}: ${(fileError as Error).message}`,
+                );
+              }
+            }
+          }
+        }
+      } catch (fileProcessError) {
+        console.error(
+          `File processing error for ${house}: ${(fileProcessError as Error).message}`,
+        );
+      }
     } catch (e) {
       errors.push(`${house}: ${(e as Error).message}`);
     }
   }
 
-  return new Response(JSON.stringify({ results, errors }), {
-    headers: {
-      "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
+  return new Response(
+    JSON.stringify({ results, errors, filesUploaded, filesSkipped }),
+    {
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Origin": "*",
+      },
     },
-  });
+  );
 });
