@@ -5,7 +5,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 const AuthContext = createContext({});
 
 // Simple password - in production, you'd want this to be more secure
-const CORRECT_PASSWORD = "Ideal123!";
+const CORRECT_PASSWORD = "Ideal";
 
 export function AuthProvider({ children }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);

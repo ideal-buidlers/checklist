@@ -8,11 +8,8 @@
  */
 
 (function () {
-  const SUPABASE_URL =
-    window.__SUPABASE_URL || "https://yywbjhegbxowhzkrazzj.supabase.co";
-  const SUPABASE_KEY =
-    window.__SUPABASE_ANON_KEY ||
-    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5d2JqaGVnYnhvd2h6a3JhenpqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NjQ5NDAsImV4cCI6MjA5MzA0MDk0MH0.sUME9IqlISueFNon_-udF2tLSoQpIH2cVpjXsbPYayM";
+  const SUPABASE_URL = window.__SUPABASE_URL;
+  const SUPABASE_KEY = window.__SUPABASE_ANON_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     console.warn(
@@ -113,7 +110,7 @@
       query("checklist_items", "is_template=eq.true&order=sort_order"),
       query("checklist_checks", "select=*"),
       query("cost_sections", "order=sort_order"),
-      query("cost_items", "is_template=eq.true&order=sort_order"),
+      query("cost_items", "order=sort_order"),
       query("cost_entries", "select=*"),
       query("drive_excluded_files", "select=*"),
     ]);
@@ -199,13 +196,16 @@
       if (h.sales_price != null) salesPrice[idx] = Number(h.sales_price);
     });
 
-    // costSections: [{ name, items: [string] }]
-    const costSectionsState = costSections.map((s) => ({
-      id: s.id,
-      name: s.name,
-      items: costItems.filter((i) => i.section_id === s.id).map((i) => i.name),
-      itemIds: costItems.filter((i) => i.section_id === s.id).map((i) => i.id),
-    }));
+    // costSections: [{ name, items: [{name, houseId}], itemIds: [] }]
+    const costSectionsState = costSections.map((s) => {
+      const items = costItems.filter((i) => i.section_id === s.id);
+      return {
+        id: s.id,
+        name: s.name,
+        items: items.map((i) => ({ name: i.name, houseId: i.house_id })),
+        itemIds: items.map((i) => i.id),
+      };
+    });
 
     // costs keyed by hIdx → { "csIdx|ciIdx": { estimate, paid } }
     const costsMap = {};
@@ -256,7 +256,8 @@
       driveExcludedFiles,
       costSections: costSectionsState.map((s) => ({
         name: s.name,
-        items: [...s.items],
+        items: s.items.map((i) => i.name),
+        itemHouseIds: s.items.map((i) => i.houseId),
       })),
       costs: costsMap,
       lotCost,
@@ -417,7 +418,7 @@
       window.__sections[sIdx].items.splice(iIdx, 1);
       window.__sections[sIdx].itemIds.splice(iIdx, 1);
     },
-    addCostItem: async (csIdx, itemName) => {
+    addCostItem: async (csIdx, itemName, houseId = null) => {
       const sectionId = (window.__costSections || [])[csIdx]?.id;
       if (!sectionId) return;
       const maxOrder = ((window.__costSections || [])[csIdx]?.itemIds || [])
@@ -427,10 +428,11 @@
           section_id: sectionId,
           name: itemName,
           sort_order: maxOrder,
-          is_template: true,
+          is_template: houseId ? false : true,
+          house_id: houseId,
         });
         const newItem = Array.isArray(rows) ? rows[0] : rows;
-        window.__costSections[csIdx].items.push(itemName);
+        window.__costSections[csIdx].items.push({ name: itemName, houseId });
         window.__costSections[csIdx].itemIds.push(newItem.id);
       } catch (e) {
         console.error("[bridge] addCostItem", e);

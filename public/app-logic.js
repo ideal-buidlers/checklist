@@ -732,9 +732,8 @@ function applyStatus(key, newStatus) {
   const [hIdx, sIdx, iIdx] = key.split("|").map(Number);
   if (newStatus) {
     state.status[key] = newStatus;
-    if (!state.checkSource[key] || state.checkSource[key] === "manual") {
-      state.checkSource[key] = "manual";
-    }
+    // Set to manual when user confirms (green), keep slack only for unconfirmed
+    state.checkSource[key] = "manual";
   } else {
     delete state.status[key];
     delete state.checkSource[key];
@@ -1274,8 +1273,8 @@ async function syncFromSlack(opts = { silent: false }) {
       return;
     }
 
-    const supabaseUrl =
-      window.__SUPABASE_URL || "https://yywbjhegbxowhzkrazzj.supabase.co";
+    const supabaseUrl = window.__SUPABASE_URL;
+    if (!supabaseUrl) throw new Error("Supabase URL not configured");
     const fnUrl = `${supabaseUrl}/functions/v1/slack-sync`;
     const token = window.__SUPABASE_ANON_KEY;
     let fnResult;
@@ -1681,11 +1680,25 @@ function renderCostsForHouse(hIdx) {
   const lot = state.lotCost[hIdx] || { estimate: 0, paid: 0 };
   const t = computeCostsTotals(hIdx);
 
-  // Flatten all cost items and sort alphabetically
+  // Get house ID for this house index
+  const houseId = window.__houseIds?.[hIdx] || null;
+
+  // Flatten cost items - show global items (no houseId) + this house's specific items
   const allCostItems = [];
   state.costSections.forEach((s, sIdx) => {
+    const itemHouseIds = s.itemHouseIds || [];
     s.items.forEach((item, iIdx) => {
-      allCostItems.push({ item, sIdx, iIdx, name: item });
+      const itemHouseId = itemHouseIds[iIdx];
+      // Include if global (no houseId) or belongs to this house
+      if (!itemHouseId || itemHouseId === houseId) {
+        allCostItems.push({
+          item,
+          sIdx,
+          iIdx,
+          name: item,
+          isHouseSpecific: !!itemHouseId,
+        });
+      }
     });
   });
   allCostItems.sort((a, b) => a.name.localeCompare(b.name));
@@ -1713,14 +1726,17 @@ function renderCostsForHouse(hIdx) {
       </thead>
       <tbody>`;
 
-  allCostItems.forEach(({ item, sIdx, iIdx }) => {
+  allCostItems.forEach(({ item, sIdx, iIdx, isHouseSpecific }) => {
     const k = `${sIdx}|${iIdx}`;
     const v = costs[k] || {};
     const e = Number(v.estimate) || 0;
     const p = Number(v.paid) || 0;
-    html += `<tr class="cost-row" data-cost-key="${k}">
+    const houseBadge = isHouseSpecific
+      ? `<span class="house-badge" title="House-specific item">🏠</span> `
+      : "";
+    html += `<tr class="cost-row${isHouseSpecific ? " house-specific" : ""}" data-cost-key="${k}">
       <td>
-        <span class="cost-category-text" contenteditable="true" data-cost-edit="category" data-cs="${sIdx}" data-ci="${iIdx}">${escapeHtml(item)}</span>
+        ${houseBadge}<span class="cost-category-text" contenteditable="true" data-cost-edit="category" data-cs="${sIdx}" data-ci="${iIdx}">${escapeHtml(item)}</span>
       </td>
       <td class="cost-cell"><input type="text" inputmode="decimal" class="cost-input ${e ? "has-value" : ""}"
         data-cost-input="estimate" data-h="${hIdx}" data-key="${k}"
@@ -1733,6 +1749,20 @@ function renderCostsForHouse(hIdx) {
       </td>
     </tr>`;
   });
+
+  // Add new cost item row with global/house-specific toggle
+  html += `<tr class="add-cost-row">
+    <td colspan="4">
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <input type="text" class="cost-add-input" id="new-cost-input" placeholder="+ Add new cost item…">
+        <label style="display: flex; align-items: center; gap: 4px; font-size: 12px; cursor: pointer;">
+          <input type="checkbox" id="new-cost-house-specific" checked>
+          <span>House-specific only</span>
+        </label>
+        <button class="btn" id="add-cost-btn" style="font-size: 12px; padding: 4px 10px;">Add</button>
+      </div>
+    </td>
+  </tr>`;
 
   html += `</tbody>
       <tfoot>
@@ -1887,14 +1917,17 @@ function attachCostsHandlers(hIdx) {
         const cs = +btn.dataset.cs,
           ci = +btn.dataset.ci;
         const name = state.costSections[cs].items[ci];
-        if (
-          !confirm(
-            `Remove cost category "${name}"? This will also remove its values across all houses.`,
-          )
-        )
-          return;
+        const isHouseSpecific =
+          state.costSections[cs].itemHouseIds?.[ci] != null;
+        const confirmMsg = isHouseSpecific
+          ? `Remove house-specific cost item "${name}"?`
+          : `Remove global cost item "${name}"? This will remove it from ALL houses.`;
+        if (!confirm(confirmMsg)) return;
         if (window.__db) await window.__db.deleteCostItem(cs, ci);
         state.costSections[cs].items.splice(ci, 1);
+        if (state.costSections[cs].itemHouseIds) {
+          state.costSections[cs].itemHouseIds.splice(ci, 1);
+        }
         Object.keys(state.costs).forEach((h) => {
           state.costs[h] = remapCostsByItem(state.costs[h], cs, ci);
           if (Object.keys(state.costs[h]).length === 0) delete state.costs[h];
@@ -1904,21 +1937,46 @@ function attachCostsHandlers(hIdx) {
       });
     });
 
-  // Add category
-  document
-    .querySelectorAll('#pane-costs [data-cost-action="add"]')
-    .forEach((inp) => {
-      inp.addEventListener("keydown", async (e) => {
-        if (e.key !== "Enter") return;
-        const v = inp.value.trim();
-        if (!v) return;
-        const cs = +inp.dataset.cs;
-        state.costSections[cs].items.push(v);
-        if (window.__db) await window.__db.addCostItem(cs, v);
-        saveState();
-        renderCostsForHouse(hIdx);
-      });
+  // Add category - new UI with global/house-specific toggle
+  const addCostBtn = document.getElementById("add-cost-btn");
+  const newCostInput = document.getElementById("new-cost-input");
+  const houseSpecificCheckbox = document.getElementById(
+    "new-cost-house-specific",
+  );
+
+  if (addCostBtn && newCostInput) {
+    const doAdd = async () => {
+      const v = newCostInput.value.trim();
+      if (!v) return;
+
+      const isHouseSpecific = houseSpecificCheckbox?.checked ?? true;
+      const houseId = isHouseSpecific ? window.__houseIds?.[hIdx] : null;
+
+      // Add to first cost section (or create structure if needed)
+      const cs = 0;
+      if (!state.costSections[cs]) {
+        state.costSections[cs] = { name: "Costs", items: [], itemHouseIds: [] };
+      }
+      if (!state.costSections[cs].itemHouseIds) {
+        state.costSections[cs].itemHouseIds = [];
+      }
+
+      state.costSections[cs].items.push(v);
+      state.costSections[cs].itemHouseIds.push(houseId);
+
+      if (window.__db) await window.__db.addCostItem(cs, v, houseId);
+      saveState();
+      renderCostsForHouse(hIdx);
+    };
+
+    addCostBtn.addEventListener("click", doAdd);
+    newCostInput.addEventListener("keydown", async (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        await doAdd();
+      }
     });
+  }
 }
 
 function escapeHtml(s) {

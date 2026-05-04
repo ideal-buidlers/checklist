@@ -568,13 +568,13 @@ td.check-cell:hover {
   color: #fff;
 }
 .status-btn.status-called {
-  background: #0969da;
-  border-color: #0969da;
+  background: #1a7f37;
+  border-color: #1a7f37;
   color: #fff;
 }
 .status-btn.status-ordered {
-  background: #d97706;
-  border-color: #d97706;
+  background: #1a7f37;
+  border-color: #1a7f37;
   color: #fff;
 }
 .status-btn.status-none {
@@ -1236,6 +1236,13 @@ tr.totals-row.grand td {
   border-top: 1px solid #d0e3f7;
   color: #0a3d80;
   font-size: 14px;
+}
+tr.cost-row.house-specific td {
+  background: #f0f9ff;
+}
+.house-badge {
+  font-size: 11px;
+  margin-right: 4px;
 }
 
 .sales-block {
