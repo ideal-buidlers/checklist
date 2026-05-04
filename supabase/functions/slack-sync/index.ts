@@ -251,17 +251,17 @@ async function uploadFileToGoogleDrive(
 }
 
 async function checkFileAlreadyUploaded(
-  supabaseUrl: string,
-  supabaseServiceKey: string,
+  sbUrl: string,
+  sbServiceKey: string,
   slackFileId: string,
 ): Promise<boolean> {
   try {
     const res = await fetch(
-      `${supabaseUrl}/rest/v1/slack_file_uploads?slack_file_id=eq.${encodeURIComponent(slackFileId)}&select=id`,
+      `${sbUrl}/rest/v1/slack_file_uploads?slack_file_id=eq.${encodeURIComponent(slackFileId)}&select=id`,
       {
         headers: {
-          Authorization: `Bearer ${supabaseServiceKey}`,
-          apikey: supabaseServiceKey,
+          Authorization: `Bearer ${sbServiceKey}`,
+          apikey: sbServiceKey,
         },
       },
     );
@@ -274,19 +274,19 @@ async function checkFileAlreadyUploaded(
 }
 
 async function recordFileUpload(
-  supabaseUrl: string,
-  supabaseServiceKey: string,
+  sbUrl: string,
+  sbServiceKey: string,
   slackFileId: string,
   slackChannel: string,
   driveFileId: string,
   fileName: string,
 ): Promise<void> {
   try {
-    await fetch(`${supabaseUrl}/rest/v1/slack_file_uploads`, {
+    await fetch(`${sbUrl}/rest/v1/slack_file_uploads`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${supabaseServiceKey}`,
-        apikey: supabaseServiceKey,
+        Authorization: `Bearer ${sbServiceKey}`,
+        apikey: sbServiceKey,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -398,86 +398,92 @@ Deno.serve(async (req: Request) => {
 
       // Process file attachments from all messages
       try {
-        const supabaseUrl = Deno.env.get("SUPABASE_URL");
-        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        const sbUrl = Deno.env.get("SB_PROJECT_URL");
+        const sbServiceKey = Deno.env.get("SB_SERVICE_KEY");
 
-        const googleTokens = await (async () => {
-          const res = await fetch(
-            `${supabaseUrl}/rest/v1/google_tokens?select=access_token`,
-            {
-              headers: {
-                Authorization: `Bearer ${supabaseServiceKey}`,
-                apikey: supabaseServiceKey,
-              },
-            },
+        if (!sbUrl || !sbServiceKey) {
+          console.log(
+            `Skipping file upload for ${house}: Supabase credentials not configured`,
           );
-          const data = await res.json();
-          return data[0];
-        })();
-
-        if (!googleTokens?.access_token) {
-          console.log(`Skipping file upload for ${house}: no Google tokens`);
         } else {
-          for (const message of messages) {
-            if (!message.files || message.files.length === 0) continue;
+          const googleTokens = await (async () => {
+            const res = await fetch(
+              `${sbUrl}/rest/v1/google_tokens?select=access_token`,
+              {
+                headers: {
+                  Authorization: `Bearer ${sbServiceKey}`,
+                  apikey: sbServiceKey,
+                },
+              },
+            );
+            const data = await res.json();
+            return data[0];
+          })();
 
-            for (const file of message.files) {
-              try {
-                const alreadyUploaded = await checkFileAlreadyUploaded(
-                  supabaseUrl,
-                  supabaseServiceKey,
-                  file.id,
-                );
-                if (alreadyUploaded) {
-                  filesSkipped++;
-                  continue;
-                }
+          if (!googleTokens?.access_token) {
+            console.log(`Skipping file upload for ${house}: no Google tokens`);
+          } else {
+            for (const message of messages) {
+              if (!message.files || message.files.length === 0) continue;
 
-                const houseFolderRes = await fetch(
-                  `${supabaseUrl}/rest/v1/house_drive_folders?select=drive_folder_id`,
-                  {
-                    headers: {
-                      Authorization: `Bearer ${supabaseServiceKey}`,
-                      apikey: supabaseServiceKey,
-                    },
-                  },
-                );
-                const houseFolders = await houseFolderRes.json();
-                const houseFolderData = houseFolders[0];
-
-                if (!houseFolderData?.drive_folder_id) {
-                  console.log(
-                    `Skipping file upload for ${house}: no Drive folder`,
+              for (const file of message.files) {
+                try {
+                  const alreadyUploaded = await checkFileAlreadyUploaded(
+                    sbUrl,
+                    sbServiceKey,
+                    file.id,
                   );
-                  continue;
+                  if (alreadyUploaded) {
+                    filesSkipped++;
+                    continue;
+                  }
+
+                  const houseFolderRes = await fetch(
+                    `${sbUrl}/rest/v1/house_drive_folders?select=drive_folder_id`,
+                    {
+                      headers: {
+                        Authorization: `Bearer ${sbServiceKey}`,
+                        apikey: sbServiceKey,
+                      },
+                    },
+                  );
+                  const houseFolders = await houseFolderRes.json();
+                  const houseFolderData = houseFolders[0];
+
+                  if (!houseFolderData?.drive_folder_id) {
+                    console.log(
+                      `Skipping file upload for ${house}: no Drive folder`,
+                    );
+                    continue;
+                  }
+
+                  const fileData = await downloadSlackFile(
+                    file.url_private_download,
+                    SLACK_TOKEN,
+                  );
+                  const driveFileId = await uploadFileToGoogleDrive(
+                    googleTokens.access_token,
+                    houseFolderData.drive_folder_id,
+                    file.name,
+                    fileData,
+                    file.mimetype,
+                  );
+
+                  await recordFileUpload(
+                    sbUrl,
+                    sbServiceKey,
+                    file.id,
+                    channel,
+                    driveFileId,
+                    file.name,
+                  );
+
+                  filesUploaded++;
+                } catch (fileError) {
+                  console.error(
+                    `Failed to upload file ${file.name}: ${(fileError as Error).message}`,
+                  );
                 }
-
-                const fileData = await downloadSlackFile(
-                  file.url_private_download,
-                  SLACK_TOKEN,
-                );
-                const driveFileId = await uploadFileToGoogleDrive(
-                  googleTokens.access_token,
-                  houseFolderData.drive_folder_id,
-                  file.name,
-                  fileData,
-                  file.mimetype,
-                );
-
-                await recordFileUpload(
-                  supabaseUrl,
-                  supabaseServiceKey,
-                  file.id,
-                  channel,
-                  driveFileId,
-                  file.name,
-                );
-
-                filesUploaded++;
-              } catch (fileError) {
-                console.error(
-                  `Failed to upload file ${file.name}: ${(fileError as Error).message}`,
-                );
               }
             }
           }

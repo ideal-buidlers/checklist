@@ -1390,6 +1390,7 @@ async function syncFromSlack(opts = { silent: false }) {
         channel: state.slackChannels[hIdx],
       }))
       .filter((h) => h.channel);
+    console.log("[syncFromSlack] housesWithChannels:", housesWithChannels);
     if (housesWithChannels.length === 0) {
       if (!opts.silent)
         showBanner(
@@ -1416,6 +1417,7 @@ async function syncFromSlack(opts = { silent: false }) {
     let totalNew = 0;
     const errors = [];
 
+    console.log("[syncFromSlack] payload:", payload);
     if (payload.length === 0) {
       setAutoSyncStatus("");
       if (!opts.silent) showBanner("All items already have a status.", "info");
@@ -1423,9 +1425,11 @@ async function syncFromSlack(opts = { silent: false }) {
     }
 
     const supabaseUrl = window.__SUPABASE_URL;
+    console.log("[syncFromSlack] supabaseUrl:", supabaseUrl);
     if (!supabaseUrl) throw new Error("Supabase URL not configured");
     const fnUrl = `${supabaseUrl}/functions/v1/slack-sync`;
     const token = window.__SUPABASE_ANON_KEY;
+    console.log("[syncFromSlack] calling function at:", fnUrl);
     let fnResult;
     try {
       const res = await fetch(fnUrl, {
