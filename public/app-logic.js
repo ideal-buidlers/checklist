@@ -754,6 +754,7 @@ function statusLabel(status) {
   if (status === "done") return "X";
   if (status === "called") return "C";
   if (status === "ordered") return "O";
+  if (status === "henry") return "H";
   return "";
 }
 
@@ -888,6 +889,7 @@ function openStatusPopover(btn) {
     <button class="status-option status-done ${current === "done" ? "active" : ""}" data-val="done">✕ Done</button>
     <button class="status-option status-called ${current === "called" ? "active" : ""}" data-val="called">C Called</button>
     <button class="status-option status-ordered ${current === "ordered" ? "active" : ""}" data-val="ordered">O Ordered</button>
+    <button class="status-option status-henry ${current === "henry" ? "active" : ""}" data-val="henry">H Henry</button>
     <button class="status-option status-clear ${!current ? "active" : ""}" data-val="">— Clear</button>
   `;
   popup.querySelectorAll(".status-option").forEach((opt) => {

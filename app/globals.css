@@ -577,6 +577,11 @@ td.check-cell:hover {
   border-color: #1a7f37;
   color: #fff;
 }
+.status-btn.status-henry {
+  background: #a31701;
+  border-color: #a31701;
+  color: #fff;
+}
 .status-btn.status-none {
   background: #f6f8fa;
   border-color: #d0d7de;
@@ -645,6 +650,10 @@ td.check-cell.from-slack .status-btn.status-done:hover {
 .status-option.status-ordered:hover {
   background: #fef3c7;
   color: #d97706;
+}
+.status-option.status-henry:hover {
+  background: #ffe5e0;
+  color: #a31701;
 }
 .status-option.status-clear:hover {
   background: #f6f8fa;
