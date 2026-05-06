@@ -795,60 +795,56 @@ function renderChecklist() {
     </th>`;
   });
   html += "</tr></thead><tbody>";
-  state.sections.forEach((section, sIdx) => {
-    html += `<tr class="section-row"><td class="item-cell">${escapeHtml(section.name)}</td>`;
-    state.houses.forEach(() => {
-      html += "<td></td>";
-    });
-    html += "</tr>";
-    // Create array of items with their indices and sort by sort_order
-    const itemsWithIndices = section.items.map((item, iIdx) => ({
-      item,
-      iIdx,
-      sortOrder: state.itemSortOrder?.[sIdx]?.[iIdx] ?? iIdx,
-    }));
-    itemsWithIndices.sort((a, b) => a.sortOrder - b.sortOrder);
 
-    itemsWithIndices.forEach(({ item, iIdx }) => {
-      html += `<tr class="item-row"><td class="item-cell">
-        <span contenteditable="true" data-section-idx="${sIdx}" data-item-idx="${iIdx}" data-edit="item">${escapeHtml(item)}</span>
-        <span class="item-actions">
-          <button class="btn secondary" data-action="move-item-up" data-section-idx="${sIdx}" data-item-idx="${iIdx}" title="Move up">↑</button>
-          <button class="btn secondary" data-action="move-item-down" data-section-idx="${sIdx}" data-item-idx="${iIdx}" title="Move down">↓</button>
-          <button class="btn danger" data-action="remove-item" data-section-idx="${sIdx}" data-item-idx="${iIdx}" title="Remove item">×</button>
-        </span>
-      </td>`;
-      state.houses.forEach((_, hIdx) => {
-        const k = `${hIdx}|${sIdx}|${iIdx}`;
-        const status = state.status[k] || null;
-        const note = state.notes[k] || "";
-        const hasNote = note.length > 0;
-        const source = state.checkSource[k] || "manual";
-        const fromSlack = !!status && source === "slack";
-        const ev = state.slackEvidence[k];
-        let cellTitle = "";
-        if (fromSlack && ev) {
-          const confidenceText = ev.confidence
-            ? ` (AI confidence: ${Math.round(ev.confidence * 100)}%)`
-            : "";
-          cellTitle = `From Slack #${ev.channel}: "${ev.text}"${confidenceText}`;
-        }
-        html += `<td class="check-cell ${hasNote ? "has-note" : ""} ${fromSlack ? "from-slack" : ""}" data-key="${k}" title="${escapeHtml(cellTitle)}">
-          <div class="cell-inner">
-            <button class="status-btn status-${status || "none"}" data-key="${k}" data-h="${hIdx}" data-s="${sIdx}" data-i="${iIdx}" title="Set status">${statusLabel(status)}</button>
-            <button class="note-btn ${hasNote ? "has-note" : ""}"
-              data-key="${k}" data-h="${hIdx}" data-s="${sIdx}" data-i="${iIdx}"
-              title="${hasNote ? escapeHtml(note).slice(0, 200) : "Add note"}">${hasNote ? NOTE_FILLED_SVG : PENCIL_OUTLINE_SVG}</button>
-          </div>
-        </td>`;
+  // Flatten all items from all sections into a single sorted list
+  const allItems = [];
+  state.sections.forEach((section, sIdx) => {
+    section.items.forEach((item, iIdx) => {
+      allItems.push({
+        item,
+        sIdx,
+        iIdx,
+        sortOrder: state.itemSortOrder?.[sIdx]?.[iIdx] ?? sIdx * 1000 + iIdx,
       });
-      html += "</tr>";
     });
-    html += `<tr class="add-item-row"><td class="item-cell">
-      <input type="text" class="text-input" placeholder="+ Add item to ${escapeHtml(section.name)}…" data-section-idx="${sIdx}" data-action="add-item">
+  });
+
+  // Sort by sort_order
+  allItems.sort((a, b) => a.sortOrder - b.sortOrder);
+
+  // Render all items in sorted order
+  allItems.forEach(({ item, sIdx, iIdx }) => {
+    html += `<tr class="item-row"><td class="item-cell">
+      <span contenteditable="true" data-section-idx="${sIdx}" data-item-idx="${iIdx}" data-edit="item">${escapeHtml(item)}</span>
+      <span class="item-actions">
+        <button class="btn secondary" data-action="move-item-up" data-section-idx="${sIdx}" data-item-idx="${iIdx}" title="Move up">↑</button>
+        <button class="btn secondary" data-action="move-item-down" data-section-idx="${sIdx}" data-item-idx="${iIdx}" title="Move down">↓</button>
+        <button class="btn danger" data-action="remove-item" data-section-idx="${sIdx}" data-item-idx="${iIdx}" title="Remove item">×</button>
+      </span>
     </td>`;
-    state.houses.forEach(() => {
-      html += "<td></td>";
+    state.houses.forEach((_, hIdx) => {
+      const k = `${hIdx}|${sIdx}|${iIdx}`;
+      const status = state.status[k] || null;
+      const note = state.notes[k] || "";
+      const hasNote = note.length > 0;
+      const source = state.checkSource[k] || "manual";
+      const fromSlack = !!status && source === "slack";
+      const ev = state.slackEvidence[k];
+      let cellTitle = "";
+      if (fromSlack && ev) {
+        const confidenceText = ev.confidence
+          ? ` (AI confidence: ${Math.round(ev.confidence * 100)}%)`
+          : "";
+        cellTitle = `From Slack #${ev.channel}: "${ev.text}"${confidenceText}`;
+      }
+      html += `<td class="check-cell ${hasNote ? "has-note" : ""} ${fromSlack ? "from-slack" : ""}" data-key="${k}" title="${escapeHtml(cellTitle)}">
+        <div class="cell-inner">
+          <button class="status-btn status-${status || "none"}" data-key="${k}" data-h="${hIdx}" data-s="${sIdx}" data-i="${iIdx}" title="Set status">${statusLabel(status)}</button>
+          <button class="note-btn ${hasNote ? "has-note" : ""}"
+            data-key="${k}" data-h="${hIdx}" data-s="${sIdx}" data-i="${iIdx}"
+            title="${hasNote ? escapeHtml(note).slice(0, 200) : "Add note"}">${hasNote ? NOTE_FILLED_SVG : PENCIL_OUTLINE_SVG}</button>
+        </div>
+      </td>`;
     });
     html += "</tr>";
   });
