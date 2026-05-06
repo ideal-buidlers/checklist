@@ -144,7 +144,8 @@
     const statusMap = {},
       notesMap = {},
       sourceMap = {},
-      evidenceMap = {};
+      evidenceMap = {},
+      itemSortOrderMap = {};
 
     // Build reverse map: itemId → { sIdx, iIdx }
     const itemPosMap = {};
@@ -152,6 +153,15 @@
       s.itemIds.forEach((id, iIdx) => {
         itemPosMap[id] = { sIdx, iIdx };
       });
+    });
+
+    // Build itemSortOrder map: sIdx → { iIdx → sortOrder }
+    clItems.forEach((item) => {
+      const pos = itemPosMap[item.id];
+      if (!pos) return;
+      const { sIdx, iIdx } = pos;
+      if (!itemSortOrderMap[sIdx]) itemSortOrderMap[sIdx] = {};
+      itemSortOrderMap[sIdx][iIdx] = item.sort_order ?? iIdx;
     });
 
     checks.forEach((c) => {
@@ -263,6 +273,7 @@
       costs: costsMap,
       lotCost,
       salesPrice,
+      itemSortOrder: itemSortOrderMap,
     };
   }
 

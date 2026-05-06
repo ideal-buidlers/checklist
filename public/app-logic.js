@@ -515,6 +515,7 @@ function loadState() {
       if (!p.costs) p.costs = {};
       if (!p.lotCost) p.lotCost = {};
       if (!p.salesPrice) p.salesPrice = {};
+      if (!p.itemSortOrder) p.itemSortOrder = {};
       return p;
     }
   } catch (e) {}
@@ -532,6 +533,7 @@ function loadState() {
     costs: {},
     lotCost: {},
     salesPrice: {},
+    itemSortOrder: {},
   };
 }
 function saveState() {
@@ -799,7 +801,15 @@ function renderChecklist() {
       html += "<td></td>";
     });
     html += "</tr>";
-    section.items.forEach((item, iIdx) => {
+    // Create array of items with their indices and sort by sort_order
+    const itemsWithIndices = section.items.map((item, iIdx) => ({
+      item,
+      iIdx,
+      sortOrder: state.itemSortOrder?.[sIdx]?.[iIdx] ?? iIdx,
+    }));
+    itemsWithIndices.sort((a, b) => a.sortOrder - b.sortOrder);
+
+    itemsWithIndices.forEach(({ item, iIdx }) => {
       html += `<tr class="item-row"><td class="item-cell">
         <span contenteditable="true" data-section-idx="${sIdx}" data-item-idx="${iIdx}" data-edit="item">${escapeHtml(item)}</span>
         <span class="item-actions">
