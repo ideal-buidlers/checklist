@@ -150,7 +150,6 @@ async function handleFileUpload(hIdx, input) {
 
     showBanner(`File "${file.name}" uploaded successfully!`, "success");
   } catch (err) {
-    console.error("Upload failed:", err);
     showBanner(`Upload failed: ${err.message}`, "error");
   }
 
@@ -761,7 +760,6 @@ function statusLabel(status) {
 function renderChecklist() {
   const table = document.getElementById("checklist-table");
   if (!table) {
-    console.error("checklist-table element not found!");
     return;
   }
 
@@ -1297,12 +1295,10 @@ async function saveHousePopover() {
       // Create Google Drive folder (async, don't block on failure)
       if (newHouse && newHouse.id) {
         createDriveFolderForHouse(name, newHouse.id).catch((err) => {
-          console.error("Failed to create Drive folder:", err);
           // Don't show error to user - folder creation is optional
         });
       }
     } catch (err) {
-      console.error("Error adding house to database:", err);
       showBanner("Failed to add house to database: " + err.message, "error");
       // Rollback state change
       state.houses.pop();
@@ -1658,7 +1654,6 @@ async function loadDriveFilesForHouse(hIdx) {
         await new Promise((resolve) => setTimeout(resolve, 500));
         folderData = await window.__db?.getHouseDriveFolder(houseId);
       } catch (err) {
-        console.error("Failed to create Drive folder:", err);
         // If creation fails (e.g., no token), just show empty state
         driveCache[hIdx] = { loading: false, files: [], error: null };
         renderSummary();
@@ -1677,7 +1672,6 @@ async function loadDriveFilesForHouse(hIdx) {
     const files = await listDriveFiles(folderData.drive_folder_id);
     driveCache[hIdx] = { loading: false, files, error: null };
   } catch (err) {
-    console.error("Failed to load Drive files:", err);
     // Check if error is due to missing token
     if (err.message && err.message.includes("No Google tokens found")) {
       driveCache[hIdx] = { loading: false, files: [], error: null };
@@ -2307,7 +2301,6 @@ waitForDbReady()
     setActiveView("checklist");
   })
   .catch((err) => {
-    console.error("Error during app initialization:", err);
     // Fallback: try to render with localStorage state
     state = loadState();
     renderTabs();

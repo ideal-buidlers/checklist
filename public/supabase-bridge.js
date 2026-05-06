@@ -12,9 +12,6 @@
   const SUPABASE_KEY = window.__SUPABASE_ANON_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_KEY) {
-    console.warn(
-      "[bridge] No Supabase credentials — falling back to localStorage only",
-    );
     window.__dbReady = Promise.resolve(null);
     return;
   }
@@ -94,7 +91,6 @@
   // ── Load full state from Supabase ───────────────────────────────────────────
 
   async function loadFromSupabase() {
-    console.log("[bridge] Loading data from Supabase...");
     const [
       houses,
       clSections,
@@ -114,17 +110,6 @@
       query("cost_entries", "select=*"),
       query("drive_excluded_files", "select=*"),
     ]);
-
-    console.log("[bridge] Loaded data:", {
-      houses: houses.length,
-      clSections: clSections.length,
-      clItems: clItems.length,
-      checks: checks.length,
-      costSections: costSections.length,
-      costItems: costItems.length,
-      costEntries: costEntries.length,
-      driveExcl: driveExcl.length,
-    });
 
     // ── Build index-keyed state that app-logic.js expects ──────────────────────
 
@@ -318,9 +303,7 @@
         },
         "house_id,item_id",
       );
-    } catch (e) {
-      console.error("[bridge] persistStatus", e);
-    }
+    } catch (e) {}
   }
 
   async function persistNote(hIdx, sIdx, iIdx, note) {
@@ -338,9 +321,7 @@
         },
         "house_id,item_id",
       );
-    } catch (e) {
-      console.error("[bridge] persistNote", e);
-    }
+    } catch (e) {}
   }
 
   async function persistSortOrder(hIdx, sIdx, iIdx, sortOrder) {
@@ -358,9 +339,7 @@
         },
         "house_id,item_id",
       );
-    } catch (e) {
-      console.error("[bridge] persistSortOrder", e);
-    }
+    } catch (e) {}
   }
 
   async function persistItemSortOrder(sIdx, iIdx, sortOrder) {
@@ -370,9 +349,7 @@
       await patch("checklist_items", itemId, {
         sort_order: sortOrder,
       });
-    } catch (e) {
-      console.error("[bridge] persistItemSortOrder", e);
-    }
+    } catch (e) {}
   }
 
   async function persistCostEntry(hIdx, csIdx, ciIdx, estimate, paid) {
@@ -391,9 +368,7 @@
         },
         "house_id,cost_item_id",
       );
-    } catch (e) {
-      console.error("[bridge] persistCostEntry", e);
-    }
+    } catch (e) {}
   }
 
   async function persistHouseField(hIdx, fields) {
@@ -401,9 +376,7 @@
     if (!houseId) return;
     try {
       await patch("houses", houseId, fields);
-    } catch (e) {
-      console.error("[bridge] persistHouseField", e);
-    }
+    } catch (e) {}
   }
 
   // Expose persist functions for app-logic.js to call after mutations
@@ -421,18 +394,14 @@
         const newHouse = Array.isArray(rows) ? rows[0] : rows;
         window.__houseIds = [...(window.__houseIds || []), newHouse.id];
         return newHouse;
-      } catch (e) {
-        console.error("[bridge] addHouse", e);
-      }
+      } catch (e) {}
     },
     deleteHouse: async (hIdx) => {
       const houseId = getHouseId(hIdx);
       if (!houseId) return;
       try {
         await del("houses", houseId);
-      } catch (e) {
-        console.error("[bridge] deleteHouse", e);
-      }
+      } catch (e) {}
       window.__houseIds = (window.__houseIds || []).filter(
         (_, i) => i !== hIdx,
       );
@@ -451,18 +420,14 @@
         const newItem = Array.isArray(rows) ? rows[0] : rows;
         window.__sections[sIdx].items.push(itemName);
         window.__sections[sIdx].itemIds.push(newItem.id);
-      } catch (e) {
-        console.error("[bridge] addChecklistItem", e);
-      }
+      } catch (e) {}
     },
     deleteChecklistItem: async (sIdx, iIdx) => {
       const itemId = getItemId(sIdx, iIdx);
       if (!itemId) return;
       try {
         await del("checklist_items", itemId);
-      } catch (e) {
-        console.error("[bridge] deleteChecklistItem", e);
-      }
+      } catch (e) {}
       window.__sections[sIdx].items.splice(iIdx, 1);
       window.__sections[sIdx].itemIds.splice(iIdx, 1);
     },
@@ -482,18 +447,14 @@
         const newItem = Array.isArray(rows) ? rows[0] : rows;
         window.__costSections[csIdx].items.push({ name: itemName, houseId });
         window.__costSections[csIdx].itemIds.push(newItem.id);
-      } catch (e) {
-        console.error("[bridge] addCostItem", e);
-      }
+      } catch (e) {}
     },
     deleteCostItem: async (csIdx, ciIdx) => {
       const itemId = getCostItemId(csIdx, ciIdx);
       if (!itemId) return;
       try {
         await del("cost_items", itemId);
-      } catch (e) {
-        console.error("[bridge] deleteCostItem", e);
-      }
+      } catch (e) {}
       window.__costSections[csIdx].items.splice(ciIdx, 1);
       window.__costSections[csIdx].itemIds.splice(ciIdx, 1);
     },
@@ -506,9 +467,7 @@
           { house_id: houseId, file_id: fileId, file_name: fileName || null },
           "house_id,file_id",
         );
-      } catch (e) {
-        console.error("[bridge] addDriveExclusion", e);
-      }
+      } catch (e) {}
     },
     removeDriveExclusion: async (hIdx, fileId) => {
       const houseId = getHouseId(hIdx);
@@ -522,9 +481,7 @@
           },
         );
         if (!res.ok) throw new Error(await res.text());
-      } catch (e) {
-        console.error("[bridge] removeDriveExclusion", e);
-      }
+      } catch (e) {}
     },
     getHouseDriveFolder: async (houseId) => {
       try {
@@ -534,7 +491,6 @@
         );
         return data && data.length > 0 ? data[0] : null;
       } catch (e) {
-        console.error("[bridge] getHouseDriveFolder", e);
         return null;
       }
     },
@@ -544,19 +500,15 @@
 
   window.__dbReady = getAuthToken()
     .then(() => {
-      console.log("[bridge] Auth token ready, loading from Supabase...");
       return loadFromSupabase();
     })
     .then((dbState) => {
-      console.log("[bridge] Database state loaded successfully:", dbState);
       if (dbState) {
         window.__dbState = dbState;
       }
       return dbState;
     })
     .catch((err) => {
-      console.error("[bridge] Failed to load from Supabase:", err);
-      console.error("[bridge] Error details:", err.message, err.stack);
       return null;
     });
 })();
