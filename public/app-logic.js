@@ -162,8 +162,9 @@ async function handleFileUpload(hIdx, input) {
 
 const DEFAULT_SECTIONS = [
   {
-    name: "Pre-Work / Permits",
+    name: "Build Tasks",
     items: [
+      "Order the plans from Architect",
       "Retire Gas (add w.o) to existing house",
       "Retire Water to existing house (paid)",
       "Retire Electric (add w.o)",
@@ -187,11 +188,6 @@ const DEFAULT_SECTIONS = [
       "Insulation Certificate (Bham)",
       "Take out building permit",
       "Install Temp Fence",
-    ],
-  },
-  {
-    name: "Soil Erosion & Demo",
-    items: [
       "Install Soil Erosion/Silt Fence",
       "Order Port a potty",
       "Receive Clearance for Electric for Demo",
@@ -202,12 +198,7 @@ const DEFAULT_SECTIONS = [
       "Demo House",
       "Excavate",
       "Open hole inspection (Bham) after house is demo",
-    ],
-  },
-  { name: "Sewer", items: ["Scope Sewer"] },
-  {
-    name: "Foundation & Rough",
-    items: [
+      "Scope Sewer",
       "Put Footing In",
       "Pin Footing",
       "Footing Inspection",
@@ -277,11 +268,6 @@ const DEFAULT_SECTIONS = [
       "Order Carpet",
       "Order Wood Floor Material",
       "Prime Interior",
-    ],
-  },
-  {
-    name: "Cabinets & Stone",
-    items: [
       "Receive Cabinets",
       "Install Cabinets",
       "Measure/Order Quartz",
@@ -289,11 +275,6 @@ const DEFAULT_SECTIONS = [
       "Install Stone",
       "Wall Registers",
       "Measure/Order Ceramic Material",
-    ],
-  },
-  {
-    name: "Finishing & Final",
-    items: [
       "Install Ceramic",
       "Order Shower Door",
       "Caulk",
@@ -319,9 +300,8 @@ const DEFAULT_SECTIONS = [
       "Final Mechanical/Fireplace",
       "Survey As built",
       "Final Building Inspection",
+      "Gutters",
       "Clean windows",
-      "BUILDER TO DO",
-      "Order the plans from Architect",
     ],
   },
 ];
@@ -823,6 +803,8 @@ function renderChecklist() {
       html += `<tr class="item-row"><td class="item-cell">
         <span contenteditable="true" data-section-idx="${sIdx}" data-item-idx="${iIdx}" data-edit="item">${escapeHtml(item)}</span>
         <span class="item-actions">
+          <button class="btn secondary" data-action="move-item-up" data-section-idx="${sIdx}" data-item-idx="${iIdx}" title="Move up">↑</button>
+          <button class="btn secondary" data-action="move-item-down" data-section-idx="${sIdx}" data-item-idx="${iIdx}" title="Move down">↓</button>
           <button class="btn danger" data-action="remove-item" data-section-idx="${sIdx}" data-item-idx="${iIdx}" title="Remove item">×</button>
         </span>
       </td>`;
@@ -1029,6 +1011,56 @@ function attachChecklistEvents() {
       renderChecklist();
     });
   });
+  document
+    .querySelectorAll('button[data-action="move-item-up"]')
+    .forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const sIdx = +btn.dataset.sectionIdx,
+          iIdx = +btn.dataset.itemIdx;
+        if (iIdx === 0) return;
+        const items = state.sections[sIdx].items;
+        [items[iIdx - 1], items[iIdx]] = [items[iIdx], items[iIdx - 1]];
+        // Update sort order in Supabase for all houses and in checklist_items
+        for (let hIdx = 0; hIdx < state.houses.length; hIdx++) {
+          if (window.__db) {
+            await window.__db.persistSortOrder(hIdx, sIdx, iIdx - 1, iIdx);
+            await window.__db.persistSortOrder(hIdx, sIdx, iIdx, iIdx - 1);
+          }
+        }
+        // Update sort order in checklist_items table
+        if (window.__db) {
+          await window.__db.persistItemSortOrder(sIdx, iIdx - 1, iIdx);
+          await window.__db.persistItemSortOrder(sIdx, iIdx, iIdx - 1);
+        }
+        saveState();
+        renderChecklist();
+      });
+    });
+  document
+    .querySelectorAll('button[data-action="move-item-down"]')
+    .forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const sIdx = +btn.dataset.sectionIdx,
+          iIdx = +btn.dataset.itemIdx;
+        const items = state.sections[sIdx].items;
+        if (iIdx >= items.length - 1) return;
+        [items[iIdx], items[iIdx + 1]] = [items[iIdx + 1], items[iIdx]];
+        // Update sort order in Supabase for all houses and in checklist_items
+        for (let hIdx = 0; hIdx < state.houses.length; hIdx++) {
+          if (window.__db) {
+            await window.__db.persistSortOrder(hIdx, sIdx, iIdx, iIdx + 1);
+            await window.__db.persistSortOrder(hIdx, sIdx, iIdx + 1, iIdx);
+          }
+        }
+        // Update sort order in checklist_items table
+        if (window.__db) {
+          await window.__db.persistItemSortOrder(sIdx, iIdx, iIdx + 1);
+          await window.__db.persistItemSortOrder(sIdx, iIdx + 1, iIdx);
+        }
+        saveState();
+        renderChecklist();
+      });
+    });
   document
     .querySelectorAll("span.house-name[contenteditable]")
     .forEach((span) => {

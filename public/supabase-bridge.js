@@ -332,6 +332,38 @@
     }
   }
 
+  async function persistSortOrder(hIdx, sIdx, iIdx, sortOrder) {
+    const houseId = getHouseId(hIdx);
+    const itemId = getItemId(sIdx, iIdx);
+    if (!houseId || !itemId) return;
+    try {
+      await upsert(
+        "checklist_checks",
+        {
+          house_id: houseId,
+          item_id: itemId,
+          sort_order: sortOrder,
+          updated_at: new Date().toISOString(),
+        },
+        "house_id,item_id",
+      );
+    } catch (e) {
+      console.error("[bridge] persistSortOrder", e);
+    }
+  }
+
+  async function persistItemSortOrder(sIdx, iIdx, sortOrder) {
+    const itemId = getItemId(sIdx, iIdx);
+    if (!itemId) return;
+    try {
+      await patch("checklist_items", itemId, {
+        sort_order: sortOrder,
+      });
+    } catch (e) {
+      console.error("[bridge] persistItemSortOrder", e);
+    }
+  }
+
   async function persistCostEntry(hIdx, csIdx, ciIdx, estimate, paid) {
     const houseId = getHouseId(hIdx);
     const costItemId = getCostItemId(csIdx, ciIdx);
@@ -367,6 +399,8 @@
   window.__db = {
     persistStatus,
     persistNote,
+    persistSortOrder,
+    persistItemSortOrder,
     persistCostEntry,
     persistHouseField,
     addHouse: async (name) => {
